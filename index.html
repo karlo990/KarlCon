@@ -328,8 +328,7 @@ function exitGhost(){
   isGhostActive = false;
   if(animId){ cancelAnimationFrame(animId); animId=null; }
   if(WS){ WS.close(); WS=null; }
-  // destroy renderers
-  Object.values(renderers).forEach(r=>r.dispose());
+  PANEL_IDS.forEach(id=>{ if(renderers[id]) renderers[id].dispose(); });
   scenes={};renderers={};cameras={};bimGroup=null;
   document.getElementById('ghost-wrap').style.display='none';
   document.getElementById('quad-grid').innerHTML='';
@@ -348,71 +347,130 @@ function exitFullscreen(){
 }
 
 // ════════════════════════════════════════════════════════
-// GHOST INIT — create 4 renderers in 4 canvas cells
+// GHOST INIT — portrait-aware 4-quadrant layout
 // ════════════════════════════════════════════════════════
+//
+// A06 is 720×1600 portrait. Square 2×2 grid wastes 880px.
+// Correct Pepper's Ghost portrait layout:
+//
+//   ┌──────────────────────┐  ← full width  (Panel N / FRONT)
+//   │         N            │    h = half
+//   ├──────────┬───────────┤
+//   │    W     │     E     │  ← each half-width (Panels W/E)
+//   │  (left)  │  (right)  │    h = full screen - 2×halfW
+//   ├──────────┴───────────┤
+//   │         S            │  ← full width  (Panel S / BACK)
+//   └──────────────────────┘    h = half
+//
+// half = W/2, so N/S are W×(W/2), E/W are (W/2)×(H-W)
+// This fills the full screen with no dead zones.
+// Each panel renders a square viewport cropped from its canvas.
 
 function initGhost(){
   const grid = document.getElementById('quad-grid');
   grid.innerHTML = '';
 
-  const W = window.innerWidth;
-  const H = window.innerHeight;
+  const SW = window.innerWidth;   // screen width  (720 on A06)
+  const SH = window.innerHeight;  // screen height (1600 on A06)
+  const half = Math.floor(SW / 2);  // 360
 
-  // Square cell size = min(W, H) / 2
-  const cell = Math.floor(Math.min(W, H) / 2);
+  // Portrait layout: 3 rows
+  // Row 0 (N):  SW × half
+  // Row 1 (mid): SW × (SH - 2*half), split into W(half×mid) + E(half×mid)
+  // Row 2 (S):  SW × half
+  const mid = SH - 2 * half;  // centre band height (880 on A06)
 
-  // Center the 2x2 grid
-  const gW = cell * 2;
-  const gH = cell * 2;
-  grid.style.width  = gW + 'px';
-  grid.style.height = gH + 'px';
-  grid.style.gridTemplateColumns = `${cell}px ${cell}px`;
-  grid.style.gridTemplateRows    = `${cell}px ${cell}px`;
-  grid.style.left = Math.floor((W - gW) / 2) + 'px';
-  grid.style.top  = Math.floor((H - gH) / 2) + 'px';
+  // Use largest square that fits in each panel for the render canvas
+  // N/S panels: SW wide, half tall → square = min(SW, half) = half (360)
+  // E/W panels: half wide, mid tall → square = min(half, mid) = half (360)
+  // All render canvases are half×half = 360×360 ✓
 
-  // Center mask diamond size
+  grid.style.cssText = `
+    position:absolute;
+    left:0;top:0;
+    width:${SW}px;height:${SH}px;
+    display:block;
+  `;
+
+  // Center mask
   const mask = document.getElementById('center-mask');
-  const mSize = Math.floor(cell * 0.18); // 18% of cell
+  const mSize = Math.floor(half * 0.12);
   mask.style.width  = mSize + 'px';
   mask.style.height = mSize + 'px';
-  mask.style.left   = Math.floor(W/2 - mSize*0.707/2) + 'px';
-  mask.style.top    = Math.floor(H/2 - mSize*0.707/2) + 'px';
+  mask.style.left   = Math.floor(SW/2 - mSize*Math.SQRT1_2) + 'px';
+  mask.style.top    = Math.floor(half + mid/2 - mSize*Math.SQRT1_2) + 'px';
 
-  // Quad order: top-left=FRONT, top-right=RIGHT, bottom-left=LEFT, bottom-right=BACK
-  // Pepper's ghost: each face must be UPRIGHT with base toward center
-  // So: FRONT faces down (base at bottom = center), RIGHT faces left, BACK faces up, LEFT faces right
-  const quadDefs = [
-    { id:'front', canvasRot:0,   azimuth:0   },  // top-left
-    { id:'right', canvasRot:90,  azimuth:90  },  // top-right
-    { id:'left',  canvasRot:270, azimuth:270 },  // bottom-left
-    { id:'back',  canvasRot:180, azimuth:180 },  // bottom-right
+  // Panel definitions
+  // canvasRot: CSS rotation applied to the render canvas so ghost faces viewer
+  // azimuth: camera orbit angle around Y
+  // panelX/Y/W/H: position of div on screen
+  const panelDefs = [
+    {
+      id:'north', azimuth:0,   canvasRot:180,
+      // top full-width strip; image rendered upright, rotated 180° → base toward centre
+      x:0, y:0, w:SW, h:half,
+      cvW:SW, cvH:half,   // canvas pixel dims
+      frustW: SW / 2,     // ortho frustum half-width in world units (proportional)
+    },
+    {
+      id:'west',  azimuth:270, canvasRot:90,
+      // left column of mid band
+      x:0, y:half, w:half, h:mid,
+      cvW:half, cvH:mid,
+      frustW: half / 2,
+    },
+    {
+      id:'east',  azimuth:90,  canvasRot:270,
+      // right column of mid band
+      x:half, y:half, w:half, h:mid,
+      cvW:half, cvH:mid,
+      frustW: half / 2,
+    },
+    {
+      id:'south', azimuth:180, canvasRot:0,
+      // bottom full-width strip; image rendered upright, no rotation → base toward centre
+      x:0, y:half+mid, w:SW, h:half,
+      cvW:SW, cvH:half,
+      frustW: SW / 2,
+    },
   ];
 
-  quadDefs.forEach(qd => {
+  panelDefs.forEach(pd => {
     const div = document.createElement('div');
     div.className = 'quad';
-    div.id = 'quad-'+qd.id;
+    div.id = 'quad-' + pd.id;
+    div.style.cssText = `
+      position:absolute;
+      left:${pd.x}px;top:${pd.y}px;
+      width:${pd.w}px;height:${pd.h}px;
+      overflow:hidden;
+    `;
+
     const cvs = document.createElement('canvas');
-    cvs.width  = cell;
-    cvs.height = cell;
+    cvs.width  = pd.cvW;
+    cvs.height = pd.cvH;
+    // Centre canvas inside div (it may be taller than div for W/E panels)
+    cvs.style.cssText = `
+      position:absolute;
+      left:50%;top:50%;
+      transform:translate(-50%,-50%) rotate(${pd.canvasRot}deg);
+      transform-origin:50% 50%;
+    `;
     div.appendChild(cvs);
     grid.appendChild(div);
 
-    // Three.js scene (shared geometry, separate renderer+camera)
+    // ── Three.js per-panel ─────────────────────────────
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x000000);
 
-    // Orthographic camera
-    const aspect = 1; // square cell
-    const frustW = 25;
-    const cam = new THREE.OrthographicCamera(
-      -frustW, frustW, frustW, -frustW, 0.1, 200
-    );
+    // Ortho frustum: scale world units to canvas aspect
+    const aspect = pd.cvW / pd.cvH;
+    const fW = pd.frustW;
+    const fH = fW / aspect;
+    const cam = new THREE.OrthographicCamera(-fW, fW, fH, -fH, 0.1, 200);
 
-    // Camera position: orbit around center, at azimuth, elevation=CAMERA_ELEV
-    const az  = qd.azimuth * Math.PI / 180;
-    const el  = CAMERA_ELEV * Math.PI / 180;
+    const az = pd.azimuth * Math.PI / 180;
+    const el = CAMERA_ELEV * Math.PI / 180;
     cam.position.set(
       CAMERA_DIST * Math.sin(az) * Math.cos(el),
       CAMERA_DIST * Math.sin(el),
@@ -420,17 +478,9 @@ function initGhost(){
     );
     cam.lookAt(0, 5, 0);
 
-    // Rotate camera around Z by canvasRot so image base faces center
-    // We do this by rotating the rendered canvas via CSS transform
-    // (rotating canvas = rotating rendered image = correct pyramid face orientation)
-
     const renderer = new THREE.WebGLRenderer({ canvas: cvs, antialias: true, alpha: false });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setSize(cell, cell);
-
-    // CSS rotation of the canvas element so each face aims inward
-    cvs.style.transformOrigin = '50% 50%';
-    cvs.style.transform = `rotate(${qd.canvasRot}deg)`;
+    renderer.setSize(pd.cvW, pd.cvH);
 
     // Lights
     const ambient = new THREE.AmbientLight(0x002233, 2.0);
@@ -439,18 +489,23 @@ function initGhost(){
     dirLight.position.set(10, 20, 10);
     scene.add(dirLight);
 
-    scenes[qd.id]   = scene;
-    cameras[qd.id]  = cam;
-    renderers[qd.id] = renderer;
+    scenes[pd.id]    = scene;
+    cameras[pd.id]   = cam;
+    renderers[pd.id] = renderer;
   });
+
+  // Store layout params for resize
+  window._karlLayout = { half, mid, SW, SH };
 }
 
 // ════════════════════════════════════════════════════════
 // BIM BUILDER — same schema as karlcon_bim_hologram_v8
 // ════════════════════════════════════════════════════════
 
+const PANEL_IDS = ['north','south','east','west'];
+
 function buildBIM(geo){
-  const IDS = ['front','right','left','back'];
+  const IDS = PANEL_IDS;
 
   // Remove existing bimGroups from all scenes
   IDS.forEach(id=>{
@@ -563,8 +618,7 @@ function startRenderLoop(){
     // Demo mode: slow rotate the building
     if(demoMode && bimParams.floor_count){
       demoAngle += 0.003;
-      const IDS = ['front','right','left','back'];
-      IDS.forEach(id=>{
+      PANEL_IDS.forEach(id=>{
         const grp = scenes[id]?.getObjectByName('bimGroup');
         if(grp) grp.rotation.y = demoAngle;
       });
@@ -573,8 +627,7 @@ function startRenderLoop(){
     // Hologram pulse
     const t = now * 0.001;
     const pulse = 0.7 + 0.3 * Math.sin(t * 1.4);
-    const IDS2 = ['front','right','left','back'];
-    IDS2.forEach(id=>{
+    PANEL_IDS.forEach(id=>{
       const grp = scenes[id]?.getObjectByName('bimGroup');
       if(!grp) return;
       grp.traverse(obj=>{
@@ -586,7 +639,7 @@ function startRenderLoop(){
     });
 
     // Render all 4 views
-    ['front','right','left','back'].forEach(id=>{
+    PANEL_IDS.forEach(id=>{
       if(renderers[id] && scenes[id] && cameras[id]){
         renderers[id].render(scenes[id], cameras[id]);
       }
@@ -726,7 +779,7 @@ function tickGestureCast(now){
 
 /** Camera setter — called ONLY from tickGestureCast inside rAF. */
 function _applySmoothCameraState(theta, phi, radius){
-  const azMap = {front: 0, right: 90, left: 270, back: 180};
+  const azMap = {north: 0, south: 180, west: 270, east: 90};
   Object.entries(azMap).forEach(([id, azDeg]) => {
     const cam = cameras[id];
     if(!cam) return;
@@ -792,26 +845,8 @@ document.addEventListener('click', ()=>{
 // ════════════════════════════════════════════════════════
 window.addEventListener('resize', ()=>{
   if(!isGhostActive) return;
-  const W  = window.innerWidth;
-  const H  = window.innerHeight;
-  const cell = Math.floor(Math.min(W,H)/2);
-  const grid = document.getElementById('quad-grid');
-  if(!grid) return;
-  grid.style.width  = (cell*2)+'px';
-  grid.style.height = (cell*2)+'px';
-  grid.style.gridTemplateColumns = `${cell}px ${cell}px`;
-  grid.style.gridTemplateRows    = `${cell}px ${cell}px`;
-  grid.style.left = Math.floor((W-cell*2)/2)+'px';
-  grid.style.top  = Math.floor((H-cell*2)/2)+'px';
-  ['front','right','left','back'].forEach(id=>{
-    if(!renderers[id]) return;
-    const cvs = renderers[id].domElement;
-    cvs.width = cell; cvs.height = cell;
-    renderers[id].setSize(cell,cell);
-    // Update camera frustum
-    const cam = cameras[id];
-    if(cam) cam.updateProjectionMatrix();
-  });
+  // Re-init layout on resize (handles orientation change)
+  exitGhost();
 });
 
 // Prevent context menu / accidental scroll
