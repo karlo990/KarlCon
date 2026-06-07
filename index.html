@@ -1,0 +1,822 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
+<title>KarlCON · Pepper's Ghost Hologram</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{
+  width:100%;height:100%;
+  background:#000;
+  overflow:hidden;
+  touch-action:none;
+}
+
+/* ── SETUP OVERLAY ── shown before ghost mode ── */
+#setup{
+  position:fixed;inset:0;
+  background:#080910;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  z-index:999;
+  font-family:'JetBrains Mono',monospace;
+  color:#0fd8ec;
+  padding:24px;
+  gap:14px;
+}
+#setup h1{
+  font-size:15px;letter-spacing:3px;text-transform:uppercase;
+  color:#0fd8ec;font-weight:600;
+}
+#setup .sub{font-size:10px;letter-spacing:1.5px;color:rgba(0,210,230,.4);margin-top:-8px}
+#setup input[type=text]{
+  width:100%;max-width:380px;
+  background:rgba(0,210,230,.05);
+  border:1px solid rgba(0,210,230,.2);
+  border-radius:6px;
+  color:#0fd8ec;
+  font-family:'JetBrains Mono',monospace;
+  font-size:11px;
+  padding:10px 14px;
+  outline:none;
+}
+#setup input[type=text]:focus{border-color:rgba(0,210,230,.5);}
+#setup label{
+  font-size:9.5px;letter-spacing:1.2px;color:rgba(0,210,230,.45);
+  align-self:flex-start;max-width:380px;width:100%;
+}
+#btn-launch{
+  width:100%;max-width:380px;
+  padding:12px;
+  background:rgba(0,210,230,.08);
+  border:1px solid rgba(0,210,230,.35);
+  border-radius:6px;
+  color:#0fd8ec;
+  font-family:'JetBrains Mono',monospace;
+  font-size:11px;letter-spacing:2px;text-transform:uppercase;
+  cursor:pointer;
+  transition:all .2s;
+}
+#btn-launch:hover{background:rgba(0,210,230,.18);box-shadow:0 0 18px rgba(0,210,230,.18)}
+#ws-status-setup{
+  font-size:9px;letter-spacing:1.5px;
+  color:rgba(0,210,230,.3);
+}
+#ws-status-setup.ok{color:#00e898}
+#ws-status-setup.err{color:#f04460}
+
+.sep{width:100%;max-width:380px;height:1px;background:rgba(0,210,230,.07);}
+.info-row{
+  width:100%;max-width:380px;
+  display:flex;justify-content:space-between;
+  font-size:9px;color:rgba(0,210,230,.3);letter-spacing:.8px;
+}
+.demo-btn{
+  width:100%;max-width:380px;
+  padding:10px;
+  background:transparent;
+  border:1px solid rgba(0,210,230,.12);
+  border-radius:6px;
+  color:rgba(0,210,230,.4);
+  font-family:'JetBrains Mono',monospace;
+  font-size:9.5px;letter-spacing:1.5px;text-transform:uppercase;
+  cursor:pointer;transition:all .2s;
+}
+.demo-btn:hover{border-color:rgba(0,210,230,.3);color:rgba(0,210,230,.7);}
+
+/* ── GHOST CANVAS CONTAINER ── */
+#ghost-wrap{
+  position:fixed;inset:0;
+  background:#000;
+  display:none;
+}
+
+/* ── 4-QUADRANT GRID ── */
+#quad-grid{
+  position:absolute;inset:0;
+  display:grid;
+  /* computed by JS based on aspect */
+}
+
+.quad{
+  position:relative;
+  overflow:hidden;
+}
+/* Each quad has a canvas */
+.quad canvas{
+  position:absolute;
+  top:0;left:0;
+  width:100%;height:100%;
+}
+
+/* Center diamond ── black dead zone so no light leaks from center */
+#center-mask{
+  position:absolute;
+  top:50%;left:50%;
+  transform:translate(-50%,-50%) rotate(45deg);
+  background:#000;
+  z-index:10;
+  pointer-events:none;
+}
+
+/* ── HUD ── tap to reveal/hide ── */
+#hud{
+  position:fixed;bottom:0;left:0;right:0;
+  background:rgba(0,0,0,.88);
+  border-top:1px solid rgba(0,210,230,.08);
+  display:flex;align-items:center;justify-content:space-between;
+  padding:8px 16px;
+  font-family:'JetBrains Mono',monospace;
+  font-size:9px;color:rgba(0,210,230,.35);letter-spacing:1px;
+  z-index:50;
+  transition:opacity .3s;
+}
+#hud.hidden{opacity:0;pointer-events:none}
+.hud-dot{
+  width:5px;height:5px;border-radius:50%;
+  background:#f04460;flex-shrink:0;
+}
+.hud-dot.on{background:#00e898;box-shadow:0 0 5px #00e898}
+#hud-exit{
+  background:transparent;border:none;
+  color:rgba(0,210,230,.3);font-family:'JetBrains Mono',monospace;
+  font-size:9px;letter-spacing:1px;cursor:pointer;
+}
+#hud-exit:hover{color:#f04460}
+
+/* ── FPS corner ── */
+#fps-corner{
+  position:fixed;top:8px;right:10px;
+  font-family:'JetBrains Mono',monospace;
+  font-size:8px;color:rgba(0,210,230,.18);
+  z-index:50;pointer-events:none;
+  letter-spacing:1px;
+}
+
+/* center divider lines (subtle, help alignment) */
+#center-h,#center-v{
+  position:absolute;
+  background:rgba(0,210,230,.04);
+  pointer-events:none;z-index:5;
+}
+#center-h{left:0;right:0;height:1px;top:50%;transform:translateY(-50%)}
+#center-v{top:0;bottom:0;width:1px;left:50%;transform:translateX(-50%)}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════ SETUP SCREEN ═══════════════ -->
+<div id="setup">
+  <h1>◈ KarlCON</h1>
+  <div class="sub">PEPPER'S GHOST · BIM HOLOGRAM · v1.0</div>
+  <div class="sep"></div>
+
+  <label>WEBSOCKET SERVER URL</label>
+  <input type="text" id="ws-url" value="ws://localhost:8765/ws"
+         placeholder="ws://your-ngrok-url/ws"/>
+  <div id="ws-status-setup">● NOT CONNECTED</div>
+
+  <button class="demo-btn" onclick="testWS()">◇ TEST CONNECTION</button>
+  <button id="btn-launch" onclick="launchGhost()">▶ LAUNCH HOLOGRAM</button>
+  <div class="sep"></div>
+
+  <button class="demo-btn" onclick="launchDemo()">◈ DEMO MODE (no server)</button>
+  <div class="info-row">
+    <span>Place phone flat · Pyramid on top</span>
+    <span>Landscape preferred</span>
+  </div>
+</div>
+
+<!-- ═══════════════ GHOST VIEW ═══════════════ -->
+<div id="ghost-wrap">
+  <div id="center-h"></div>
+  <div id="center-v"></div>
+  <div id="quad-grid">
+    <!-- quads injected by JS -->
+  </div>
+  <div id="center-mask"></div>
+  <div id="fps-corner" id="fps-disp">60fps</div>
+  <div id="hud">
+    <div style="display:flex;align-items:center;gap:8px">
+      <div class="hud-dot" id="hud-dot"></div>
+      <span id="hud-ws-txt">WS OFFLINE</span>
+    </div>
+    <span id="hud-bim-info">NO BIM</span>
+    <button id="hud-exit" onclick="exitGhost()">✕ EXIT</button>
+  </div>
+</div>
+
+<!-- Three.js r128 -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+
+// ═══════════════════════════════════════════════════════
+// KARLCON PEPPER'S GHOST HOLOGRAM ENGINE
+// -------------------------------------------------------
+// Physics:
+//   Pepper's Ghost: 4 identical views of a 3D object
+//   each rotated to point toward the pyramid apex.
+//   Glass panel (45°) reflects screen into floating ghost.
+//
+//   Quadrant layout (phone face-up, pyramid on top):
+//
+//        [  FRONT  ]      ← rotated 0°   (top quad)
+//        [LEFT|RGHT]      ← rotated 90°/270° (sides)
+//        [  BACK   ]      ← rotated 180° (bottom quad)
+//
+//   Each quad uses its own THREE.js renderer + OrthographicCamera
+//   pointed at the same scene, from a different azimuth.
+//   All rendered on pure black (#000) background.
+// ═══════════════════════════════════════════════════════
+
+// ── CONFIG ──────────────────────────────────────────────
+const VIEWS = [
+  { id:'front', rot:0,   label:'FRONT' },
+  { id:'right', rot:270, label:'RIGHT' },
+  { id:'back',  rot:180, label:'BACK'  },
+  { id:'left',  rot:90,  label:'LEFT'  },
+];
+
+// Camera azimuths for each face (degrees from +Z axis)
+const VIEW_AZIMUTH = {
+  front: 0,
+  right: 90,
+  back:  180,
+  left:  270,
+};
+
+const CAMERA_DIST = 40;
+const CAMERA_ELEV = 25; // elevation angle degrees
+
+// ── STATE ────────────────────────────────────────────────
+let scenes       = {};
+let renderers    = {};
+let cameras      = {};
+let bimGroup     = null;
+let animId       = null;
+let WS           = null;
+let demoMode     = false;
+let demoAngle    = 0;
+let bimParams    = {};
+let isGhostActive= false;
+let hudTimer     = null;
+let fpsCount     = 0;
+let fpsLast      = performance.now();
+
+// ── BIM default params ───────────────────────────────────
+const DEFAULT_GEO = {
+  floor_count:  3,
+  floor_height: 3.2,
+  wing_span:    18,
+  depth:        14,
+  holo_colour:  '#00ffe7',
+  rot:          0,
+  column_grid:  { bays_x: 3, bays_z: 2 },
+  confidence:   0.85,
+  gfa:          756,
+  volume:       2419,
+  columns:      12,
+};
+
+// ════════════════════════════════════════════════════════
+// SETUP
+// ════════════════════════════════════════════════════════
+
+function testWS(){
+  const url = document.getElementById('ws-url').value.trim();
+  const st  = document.getElementById('ws-status-setup');
+  st.className='';
+  st.textContent = '● CONNECTING…';
+  try {
+    const ws = new WebSocket(url);
+    ws.onopen  = ()=>{ st.className='ok'; st.textContent='● CONNECTED ✓'; ws.close(); };
+    ws.onerror = ()=>{ st.className='err'; st.textContent='● FAILED — check URL'; };
+    ws.onclose = ()=>{ if(st.textContent==='● CONNECTING…'){ st.className='err'; st.textContent='● CLOSED'; }};
+  } catch(e){
+    st.className='err'; st.textContent='● ERROR: '+e.message;
+  }
+}
+
+function launchGhost(){
+  const url = document.getElementById('ws-url').value.trim();
+  demoMode = false;
+  initGhost();
+  connectWS(url);
+  document.getElementById('setup').style.display='none';
+  document.getElementById('ghost-wrap').style.display='block';
+  isGhostActive = true;
+  startRenderLoop();
+  // show HUD briefly then hide
+  showHUDBriefly();
+  // Fullscreen
+  requestFullscreen();
+}
+
+function launchDemo(){
+  demoMode = true;
+  initGhost();
+  document.getElementById('setup').style.display='none';
+  document.getElementById('ghost-wrap').style.display='block';
+  isGhostActive = true;
+  buildBIM(DEFAULT_GEO);
+  startRenderLoop();
+  showHUDBriefly();
+  requestFullscreen();
+}
+
+function exitGhost(){
+  isGhostActive = false;
+  if(animId){ cancelAnimationFrame(animId); animId=null; }
+  if(WS){ WS.close(); WS=null; }
+  // destroy renderers
+  Object.values(renderers).forEach(r=>r.dispose());
+  scenes={};renderers={};cameras={};bimGroup=null;
+  document.getElementById('ghost-wrap').style.display='none';
+  document.getElementById('quad-grid').innerHTML='';
+  document.getElementById('setup').style.display='flex';
+  exitFullscreen();
+}
+
+function requestFullscreen(){
+  const el = document.documentElement;
+  (el.requestFullscreen||el.webkitRequestFullscreen||el.mozRequestFullScreen||function(){})
+    .call(el);
+}
+function exitFullscreen(){
+  (document.exitFullscreen||document.webkitExitFullscreen||function(){})
+    .call(document);
+}
+
+// ════════════════════════════════════════════════════════
+// GHOST INIT — create 4 renderers in 4 canvas cells
+// ════════════════════════════════════════════════════════
+
+function initGhost(){
+  const grid = document.getElementById('quad-grid');
+  grid.innerHTML = '';
+
+  const W = window.innerWidth;
+  const H = window.innerHeight;
+
+  // Square cell size = min(W, H) / 2
+  const cell = Math.floor(Math.min(W, H) / 2);
+
+  // Center the 2x2 grid
+  const gW = cell * 2;
+  const gH = cell * 2;
+  grid.style.width  = gW + 'px';
+  grid.style.height = gH + 'px';
+  grid.style.gridTemplateColumns = `${cell}px ${cell}px`;
+  grid.style.gridTemplateRows    = `${cell}px ${cell}px`;
+  grid.style.left = Math.floor((W - gW) / 2) + 'px';
+  grid.style.top  = Math.floor((H - gH) / 2) + 'px';
+
+  // Center mask diamond size
+  const mask = document.getElementById('center-mask');
+  const mSize = Math.floor(cell * 0.18); // 18% of cell
+  mask.style.width  = mSize + 'px';
+  mask.style.height = mSize + 'px';
+  mask.style.left   = Math.floor(W/2 - mSize*0.707/2) + 'px';
+  mask.style.top    = Math.floor(H/2 - mSize*0.707/2) + 'px';
+
+  // Quad order: top-left=FRONT, top-right=RIGHT, bottom-left=LEFT, bottom-right=BACK
+  // Pepper's ghost: each face must be UPRIGHT with base toward center
+  // So: FRONT faces down (base at bottom = center), RIGHT faces left, BACK faces up, LEFT faces right
+  const quadDefs = [
+    { id:'front', canvasRot:0,   azimuth:0   },  // top-left
+    { id:'right', canvasRot:90,  azimuth:90  },  // top-right
+    { id:'left',  canvasRot:270, azimuth:270 },  // bottom-left
+    { id:'back',  canvasRot:180, azimuth:180 },  // bottom-right
+  ];
+
+  quadDefs.forEach(qd => {
+    const div = document.createElement('div');
+    div.className = 'quad';
+    div.id = 'quad-'+qd.id;
+    const cvs = document.createElement('canvas');
+    cvs.width  = cell;
+    cvs.height = cell;
+    div.appendChild(cvs);
+    grid.appendChild(div);
+
+    // Three.js scene (shared geometry, separate renderer+camera)
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x000000);
+
+    // Orthographic camera
+    const aspect = 1; // square cell
+    const frustW = 25;
+    const cam = new THREE.OrthographicCamera(
+      -frustW, frustW, frustW, -frustW, 0.1, 200
+    );
+
+    // Camera position: orbit around center, at azimuth, elevation=CAMERA_ELEV
+    const az  = qd.azimuth * Math.PI / 180;
+    const el  = CAMERA_ELEV * Math.PI / 180;
+    cam.position.set(
+      CAMERA_DIST * Math.sin(az) * Math.cos(el),
+      CAMERA_DIST * Math.sin(el),
+      CAMERA_DIST * Math.cos(az) * Math.cos(el)
+    );
+    cam.lookAt(0, 5, 0);
+
+    // Rotate camera around Z by canvasRot so image base faces center
+    // We do this by rotating the rendered canvas via CSS transform
+    // (rotating canvas = rotating rendered image = correct pyramid face orientation)
+
+    const renderer = new THREE.WebGLRenderer({ canvas: cvs, antialias: true, alpha: false });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(cell, cell);
+
+    // CSS rotation of the canvas element so each face aims inward
+    cvs.style.transformOrigin = '50% 50%';
+    cvs.style.transform = `rotate(${qd.canvasRot}deg)`;
+
+    // Lights
+    const ambient = new THREE.AmbientLight(0x002233, 2.0);
+    scene.add(ambient);
+    const dirLight = new THREE.DirectionalLight(0x00ffe7, 1.2);
+    dirLight.position.set(10, 20, 10);
+    scene.add(dirLight);
+
+    scenes[qd.id]   = scene;
+    cameras[qd.id]  = cam;
+    renderers[qd.id] = renderer;
+  });
+}
+
+// ════════════════════════════════════════════════════════
+// BIM BUILDER — same schema as karlcon_bim_hologram_v8
+// ════════════════════════════════════════════════════════
+
+function buildBIM(geo){
+  const IDS = ['front','right','left','back'];
+
+  // Remove existing bimGroups from all scenes
+  IDS.forEach(id=>{
+    const old = scenes[id]?.getObjectByName('bimGroup');
+    if(old) scenes[id].remove(old);
+  });
+
+  const nF   = geo.floor_count  || 3;
+  const fH   = geo.floor_height || 3.2;
+  const W    = geo.wing_span    || 18;
+  const D    = geo.depth        || 14;
+  const col  = new THREE.Color(geo.holo_colour || '#00ffe7');
+  const rotY = (geo.rot || 0) * Math.PI / 180;
+
+  const matLine = new THREE.LineBasicMaterial({ color:col, transparent:true, opacity:0.85 });
+  const matSlab = new THREE.MeshBasicMaterial({ color:col, transparent:true, opacity:0.08, side:THREE.DoubleSide });
+  const matCol  = new THREE.MeshBasicMaterial({ color:col, transparent:true, opacity:0.18, side:THREE.DoubleSide });
+  const matFace = new THREE.MeshBasicMaterial({ color:col, transparent:true, opacity:0.05, side:THREE.DoubleSide });
+
+  function makeBIMGroup(){
+    const g = new THREE.Group();
+    g.name = 'bimGroup';
+
+    // Floor grid lines
+    for(let i=0;i<=nF;i++){
+      const y = i * fH;
+      const pts = [
+        new THREE.Vector3(-W/2,y,-D/2),
+        new THREE.Vector3( W/2,y,-D/2),
+        new THREE.Vector3( W/2,y, D/2),
+        new THREE.Vector3(-W/2,y, D/2),
+        new THREE.Vector3(-W/2,y,-D/2),
+      ];
+      g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), matLine));
+    }
+    // Vertical edges
+    [[-W/2,-D/2],[ W/2,-D/2],[ W/2, D/2],[-W/2, D/2]].forEach(([x,z])=>{
+      const pts=[new THREE.Vector3(x,0,z),new THREE.Vector3(x,nF*fH,z)];
+      g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), matLine));
+    });
+
+    // Floor slabs
+    const slabGeo = new THREE.PlaneGeometry(W, D);
+    for(let i=0;i<=nF;i++){
+      const m = new THREE.Mesh(slabGeo, matSlab);
+      m.rotation.x = -Math.PI/2; m.position.y = i*fH;
+      g.add(m);
+    }
+
+    // Columns
+    const baysX = geo.column_grid?.bays_x || Math.max(1, Math.round(W/6));
+    const baysZ = geo.column_grid?.bays_z || Math.max(1, Math.round(D/5));
+    const sx = W/baysX, sz = D/baysZ;
+    const colGeo = new THREE.BoxGeometry(0.4, nF*fH, 0.4);
+    for(let i=0;i<=baysX;i++) for(let j=0;j<=baysZ;j++){
+      const m = new THREE.Mesh(colGeo, matCol);
+      m.position.set(-W/2+i*sx, nF*fH/2, -D/2+j*sz);
+      g.add(m);
+    }
+
+    // Facade (transparent shell)
+    const facGeo = new THREE.BoxGeometry(W, nF*fH, D);
+    g.add(new THREE.Mesh(facGeo, matFace));
+
+    // Wireframe on top of facade
+    const wireGeo = new THREE.EdgesGeometry(facGeo);
+    g.add(new THREE.LineSegments(wireGeo, new THREE.LineBasicMaterial({color:col,transparent:true,opacity:0.3})));
+
+    // Center the building vertically
+    g.position.y = 0;
+    g.rotation.y = rotY;
+    return g;
+  }
+
+  // Add a copy of the group to each scene
+  IDS.forEach(id=>{
+    if(!scenes[id]) return;
+    const grp = makeBIMGroup();
+    scenes[id].add(grp);
+  });
+
+  bimParams = geo;
+  updateHUD(geo);
+}
+
+// ════════════════════════════════════════════════════════
+// RENDER LOOP
+// ════════════════════════════════════════════════════════
+
+function startRenderLoop(){
+  if(animId) cancelAnimationFrame(animId);
+  let lastT = performance.now();
+
+  function frame(now){
+    if(!isGhostActive) return;
+    animId = requestAnimationFrame(frame);
+
+    // GestureCast: interpolate camera FIRST before any render (Fix A1/A2/A3)
+    tickGestureCast(now);
+
+    // FPS
+    fpsCount++;
+    if(now - fpsLast >= 600){
+      const fps = Math.round(fpsCount * 1000 / (now - fpsLast));
+      fpsCount = 0; fpsLast = now;
+      const el = document.getElementById('fps-corner');
+      if(el) el.textContent = fps + 'fps';
+    }
+
+    // Demo mode: slow rotate the building
+    if(demoMode && bimParams.floor_count){
+      demoAngle += 0.003;
+      const IDS = ['front','right','left','back'];
+      IDS.forEach(id=>{
+        const grp = scenes[id]?.getObjectByName('bimGroup');
+        if(grp) grp.rotation.y = demoAngle;
+      });
+    }
+
+    // Hologram pulse
+    const t = now * 0.001;
+    const pulse = 0.7 + 0.3 * Math.sin(t * 1.4);
+    const IDS2 = ['front','right','left','back'];
+    IDS2.forEach(id=>{
+      const grp = scenes[id]?.getObjectByName('bimGroup');
+      if(!grp) return;
+      grp.traverse(obj=>{
+        if(obj.material){
+          const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+          mats.forEach(m=>{ if(m.opacity!==undefined && m.opacity>0.01) m.opacity = m.opacity; });
+        }
+      });
+    });
+
+    // Render all 4 views
+    ['front','right','left','back'].forEach(id=>{
+      if(renderers[id] && scenes[id] && cameras[id]){
+        renderers[id].render(scenes[id], cameras[id]);
+      }
+    });
+
+    lastT = now;
+  }
+  animId = requestAnimationFrame(frame);
+}
+
+// ════════════════════════════════════════════════════════
+// WEBSOCKET
+// ════════════════════════════════════════════════════════
+
+let wsReconnectTimer = null;
+
+function connectWS(url){
+  if(WS && WS.readyState<=1){ WS.close(); }
+  if(wsReconnectTimer){ clearTimeout(wsReconnectTimer); wsReconnectTimer=null; }
+  try {
+    WS = new WebSocket(url);
+  } catch(e){ setHUDWS(false); return; }
+
+  WS.onopen = ()=>{
+    setHUDWS(true);
+    WS.send(JSON.stringify({type:'health'}));
+    // Request latest BIM immediately
+    WS.send(JSON.stringify({type:'get_bim'}));
+  };
+  WS.onclose = ()=>{
+    setHUDWS(false);
+    wsReconnectTimer = setTimeout(()=>connectWS(url), 5000);
+  };
+  WS.onerror = ()=>{ setHUDWS(false); };
+  WS.onmessage = e=>{
+    try {
+      const msg = JSON.parse(e.data);
+      handleMsg(msg);
+    } catch(_){}
+  };
+}
+
+function handleMsg(msg){
+  if(msg.type==='result'){
+    if(msg.endpoint==='decode' && msg.data?.geometry){
+      buildBIM(msg.data.geometry);
+    } else if(msg.endpoint==='get_bim' && msg.data?.geometry){
+      buildBIM(msg.data.geometry);
+    } else if(msg.endpoint==='health'){
+      // healthy
+    }
+  } else if(msg.type==='bim_update' && msg.geometry){
+    // Push notification from server: new BIM data
+    buildBIM(msg.geometry);
+  } else if(msg.type==='geometry' && msg.data){
+    buildBIM(msg.data);
+  } else if(msg.type==='bim_transform'){
+    // GestureCast: buffer for rAF interpolation (Fix A1); seq for RFC-3550 guard (Fix R2)
+    applyRemoteTransform(msg.theta, msg.phi, msg.radius, msg.seq);
+  }
+}
+
+// ── GestureCast Interpolation Engine ────────────────────────────────────────
+// Fixes: A1 (mid-rAF camera mutation), A2 (20→60Hz EMA lerp), A3 (dead-reckoning)
+//
+// [1] Gambetta (2018) "Entity Interpolation" — double-buffer: WS writes GC.pending;
+//     rAF reads + clears → no mid-frame camera mutation.
+// [2] Pantel & Wolf (2002) EMA α=0.18 @ 60Hz → 95% reach in ≈267ms, smooths 20Hz jitter.
+// [3] Steed & Oliveira (2010) §18.4 — velocity extrapolation when packets stale >150ms.
+// [4] RFC 3550 §5.1 — monotonic seq to discard out-of-order cloudflared packets.
+
+const GC = {
+  seq:     -1,
+  prev:    {theta: 0.5, phi: 0.9, radius: 30},  // smoothed interpolated state
+  target:  {theta: 0.5, phi: 0.9, radius: 30},  // latest received target
+  vel:     {theta: 0,   phi: 0,   radius: 0  },  // velocity for dead-reckoning [3]
+  pending: null,        // written by WS.onmessage; consumed by rAF tickGestureCast [1]
+  lastRecv: 0,          // DOMHighResTimeStamp of last received packet
+  PACKET_TIMEOUT: 150,  // ms: threshold before velocity extrapolation kicks in [3]
+  LERP_ALPHA:     0.18, // EMA coeff [2]: smooth but responsive at 60Hz
+};
+
+/**
+ * tickGestureCast — called at START of every rAF frame (Fix A1).
+ * 1. Consume WS pending state (double-buffer; prevents mid-frame mutation) [1].
+ * 2. Dead-reckoning extrapolation when packets are late (>150ms) [3].
+ * 3. EMA spherical lerp prev → effective target [2].
+ * 4. Write smoothed coords to all 4 cameras (single write-point per frame).
+ */
+function tickGestureCast(now){
+  if(!cameras || !isGhostActive) return;
+
+  // Step 1: consume pending (Gambetta double-buffer) [1]
+  if(GC.pending !== null){
+    const p = GC.pending;
+    GC.pending = null;
+    // RFC 3550 seq guard: discard out-of-order/duplicate packets [4]
+    if(p.seq !== undefined && p.seq <= GC.seq){
+      /* stale packet — discard silently */
+    } else {
+      if(p.seq !== undefined) GC.seq = p.seq;
+      // Velocity = Δstate/Δtime for dead-reckoning [3]
+      const dt = now - GC.lastRecv;
+      if(dt > 5 && dt < GC.PACKET_TIMEOUT){
+        GC.vel.theta  = (p.theta  - GC.target.theta)  / dt;
+        GC.vel.phi    = (p.phi    - GC.target.phi)    / dt;
+        GC.vel.radius = (p.radius - GC.target.radius) / dt;
+      }
+      GC.target   = {theta: p.theta, phi: p.phi, radius: p.radius};
+      GC.lastRecv = now;
+    }
+  }
+
+  // Step 2: dead-reckoning extrapolation [3]
+  const stale = now - GC.lastRecv;
+  let effTheta  = GC.target.theta;
+  let effPhi    = GC.target.phi;
+  let effRadius = GC.target.radius;
+  if(stale > GC.PACKET_TIMEOUT && stale < 1200){
+    const extMs = Math.min(stale - GC.PACKET_TIMEOUT, 500);
+    effTheta  = GC.target.theta  + GC.vel.theta  * extMs;
+    effPhi    = Math.max(0.05, Math.min(Math.PI - 0.05,
+                  GC.target.phi + GC.vel.phi * extMs));
+    effRadius = Math.max(8, Math.min(80,
+                  GC.target.radius + GC.vel.radius * extMs));
+  }
+
+  // Step 3: EMA spherical lerp [2]
+  const α = GC.LERP_ALPHA;
+  GC.prev.theta  += α * (effTheta  - GC.prev.theta);
+  GC.prev.phi    += α * (effPhi    - GC.prev.phi);
+  GC.prev.radius += α * (effRadius - GC.prev.radius);
+
+  // Step 4: apply smoothed state to all 4 cameras (only write-point per frame)
+  _applySmoothCameraState(GC.prev.theta, GC.prev.phi, GC.prev.radius);
+}
+
+/** Camera setter — called ONLY from tickGestureCast inside rAF. */
+function _applySmoothCameraState(theta, phi, radius){
+  const azMap = {front: 0, right: 90, left: 270, back: 180};
+  Object.entries(azMap).forEach(([id, azDeg]) => {
+    const cam = cameras[id];
+    if(!cam) return;
+    const az = (azDeg * Math.PI / 180) + theta;
+    cam.position.set(
+      radius * Math.sin(az) * Math.cos(phi),
+      radius * Math.sin(phi),
+      radius * Math.cos(az) * Math.cos(phi)
+    );
+    cam.lookAt(0, 5, 0);
+  });
+}
+
+/**
+ * applyRemoteTransform — WS onmessage handler entry point.
+ * Writes to GC.pending ONLY; no camera mutation here (Fix A1).
+ * seq passed from relay-stamped message for RFC-3550 guard (Fix R2).
+ */
+function applyRemoteTransform(theta, phi, radius, seq){
+  GC.pending = {
+    theta:  (theta  !== undefined) ? theta  : 0.5,
+    phi:    (phi    !== undefined) ? phi    : 0.9,
+    radius: (radius !== undefined) ? radius : 30,
+    seq:    seq,
+  };
+}
+
+// ════════════════════════════════════════════════════════
+// HUD
+// ════════════════════════════════════════════════════════
+
+function setHUDWS(online){
+  const dot = document.getElementById('hud-dot');
+  const txt = document.getElementById('hud-ws-txt');
+  if(dot){ dot.className = 'hud-dot' + (online ? ' on' : ''); }
+  if(txt){ txt.textContent = online ? 'WS ONLINE' : 'WS OFFLINE'; }
+}
+
+function updateHUD(geo){
+  const el = document.getElementById('hud-bim-info');
+  if(!el || !geo) return;
+  const nF = geo.floor_count || '?';
+  const W  = geo.wing_span   || '?';
+  const D  = geo.depth       || '?';
+  el.textContent = `${nF}F · ${W}×${D}m · ${((geo.confidence||0)*100).toFixed(0)}% conf`;
+}
+
+function showHUDBriefly(){
+  const hud = document.getElementById('hud');
+  if(!hud) return;
+  hud.classList.remove('hidden');
+  if(hudTimer) clearTimeout(hudTimer);
+  hudTimer = setTimeout(()=>hud.classList.add('hidden'), 3500);
+}
+
+// Tap anywhere to show HUD
+document.addEventListener('click', ()=>{
+  if(isGhostActive) showHUDBriefly();
+});
+
+// ════════════════════════════════════════════════════════
+// WINDOW RESIZE
+// ════════════════════════════════════════════════════════
+window.addEventListener('resize', ()=>{
+  if(!isGhostActive) return;
+  const W  = window.innerWidth;
+  const H  = window.innerHeight;
+  const cell = Math.floor(Math.min(W,H)/2);
+  const grid = document.getElementById('quad-grid');
+  if(!grid) return;
+  grid.style.width  = (cell*2)+'px';
+  grid.style.height = (cell*2)+'px';
+  grid.style.gridTemplateColumns = `${cell}px ${cell}px`;
+  grid.style.gridTemplateRows    = `${cell}px ${cell}px`;
+  grid.style.left = Math.floor((W-cell*2)/2)+'px';
+  grid.style.top  = Math.floor((H-cell*2)/2)+'px';
+  ['front','right','left','back'].forEach(id=>{
+    if(!renderers[id]) return;
+    const cvs = renderers[id].domElement;
+    cvs.width = cell; cvs.height = cell;
+    renderers[id].setSize(cell,cell);
+    // Update camera frustum
+    const cam = cameras[id];
+    if(cam) cam.updateProjectionMatrix();
+  });
+});
+
+// Prevent context menu / accidental scroll
+document.addEventListener('contextmenu', e=>e.preventDefault());
+
+</script>
+</body>
+</html>
