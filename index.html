@@ -6,907 +6,650 @@
 <title>KarlCON · Pepper's Ghost Hologram</title>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-html,body{
-  width:100%;height:100%;
-  background:#000;
-  overflow:hidden;
-  touch-action:none;
-}
+html,body{width:100%;height:100%;background:#000;overflow:hidden;touch-action:none}
 
-/* ── SETUP OVERLAY ── shown before ghost mode ── */
+/* ── SETUP SCREEN ── */
 #setup{
   position:fixed;inset:0;
   background:#080910;
   display:flex;flex-direction:column;align-items:center;justify-content:center;
   z-index:999;
-  font-family:'JetBrains Mono',monospace;
+  font-family:monospace;
   color:#0fd8ec;
-  padding:24px;
-  gap:14px;
+  padding:24px;gap:14px;
 }
-#setup h1{
-  font-size:15px;letter-spacing:3px;text-transform:uppercase;
-  color:#0fd8ec;font-weight:600;
-}
+#setup h1{font-size:16px;letter-spacing:3px;text-transform:uppercase;font-weight:700}
 #setup .sub{font-size:10px;letter-spacing:1.5px;color:rgba(0,210,230,.4);margin-top:-8px}
+.sep{width:100%;max-width:380px;height:1px;background:rgba(0,210,230,.07)}
+#setup label{font-size:9.5px;letter-spacing:1px;color:rgba(0,210,230,.45);align-self:flex-start;max-width:380px;width:100%}
 #setup input[type=text]{
   width:100%;max-width:380px;
-  background:rgba(0,210,230,.05);
-  border:1px solid rgba(0,210,230,.2);
-  border-radius:6px;
-  color:#0fd8ec;
-  font-family:'JetBrains Mono',monospace;
-  font-size:11px;
-  padding:10px 14px;
-  outline:none;
+  background:rgba(0,210,230,.05);border:1px solid rgba(0,210,230,.2);border-radius:6px;
+  color:#0fd8ec;font-family:monospace;font-size:11px;padding:10px 14px;outline:none;
 }
-#setup input[type=text]:focus{border-color:rgba(0,210,230,.5);}
-#setup label{
-  font-size:9.5px;letter-spacing:1.2px;color:rgba(0,210,230,.45);
-  align-self:flex-start;max-width:380px;width:100%;
-}
-#btn-launch{
-  width:100%;max-width:380px;
-  padding:12px;
-  background:rgba(0,210,230,.08);
-  border:1px solid rgba(0,210,230,.35);
-  border-radius:6px;
-  color:#0fd8ec;
-  font-family:'JetBrains Mono',monospace;
-  font-size:11px;letter-spacing:2px;text-transform:uppercase;
-  cursor:pointer;
+#setup input[type=text]:focus{border-color:rgba(0,210,230,.5)}
+#ws-status{font-size:9px;letter-spacing:1.5px;color:rgba(0,210,230,.3)}
+#ws-status.ok{color:#00e898}
+#ws-status.err{color:#f04460}
+
+.btn{
+  width:100%;max-width:380px;padding:12px;
+  border-radius:6px;cursor:pointer;
+  font-family:monospace;font-size:11px;letter-spacing:2px;text-transform:uppercase;
   transition:all .2s;
 }
-#btn-launch:hover{background:rgba(0,210,230,.18);box-shadow:0 0 18px rgba(0,210,230,.18)}
-#ws-status-setup{
-  font-size:9px;letter-spacing:1.5px;
-  color:rgba(0,210,230,.3);
+.btn-primary{
+  background:rgba(0,210,230,.08);border:1px solid rgba(0,210,230,.35);color:#0fd8ec;
 }
-#ws-status-setup.ok{color:#00e898}
-#ws-status-setup.err{color:#f04460}
-
-.sep{width:100%;max-width:380px;height:1px;background:rgba(0,210,230,.07);}
+.btn-primary:active{background:rgba(0,210,230,.22)}
+.btn-ghost{
+  background:transparent;border:1px solid rgba(0,210,230,.12);color:rgba(0,210,230,.4);
+}
+.btn-ghost:active{border-color:rgba(0,210,230,.4);color:rgba(0,210,230,.8)}
 .info-row{
-  width:100%;max-width:380px;
-  display:flex;justify-content:space-between;
+  width:100%;max-width:380px;display:flex;justify-content:space-between;
   font-size:9px;color:rgba(0,210,230,.3);letter-spacing:.8px;
 }
-.demo-btn{
-  width:100%;max-width:380px;
-  padding:10px;
-  background:transparent;
-  border:1px solid rgba(0,210,230,.12);
-  border-radius:6px;
-  color:rgba(0,210,230,.4);
-  font-family:'JetBrains Mono',monospace;
-  font-size:9.5px;letter-spacing:1.5px;text-transform:uppercase;
-  cursor:pointer;transition:all .2s;
-}
-.demo-btn:hover{border-color:rgba(0,210,230,.3);color:rgba(0,210,230,.7);}
 
-/* ── GHOST CANVAS CONTAINER ── */
-#ghost-wrap{
-  position:fixed;inset:0;
-  background:#000;
-  display:none;
-}
+/* ── HOLOGRAM VIEW ── */
+#holo-wrap{position:fixed;inset:0;background:#000;display:none}
+canvas#holo-canvas{position:absolute;top:0;left:0;width:100%;height:100%;display:block}
 
-/* ── 4-QUADRANT GRID ── */
-#quad-grid{
-  position:absolute;inset:0;
-  display:grid;
-  /* computed by JS based on aspect */
-}
-
-.quad{
-  position:relative;
-  overflow:hidden;
-}
-/* Each quad has a canvas */
-.quad canvas{
-  position:absolute;
-  top:0;left:0;
-  width:100%;height:100%;
-}
-
-/* Center diamond ── black dead zone so no light leaks from center */
-#center-mask{
-  position:absolute;
-  top:50%;left:50%;
-  transform:translate(-50%,-50%) rotate(45deg);
-  background:#000;
-  z-index:10;
-  pointer-events:none;
-}
-
-/* ── HUD ── tap to reveal/hide ── */
+/* ── HUD ── */
 #hud{
   position:fixed;bottom:0;left:0;right:0;
-  background:rgba(0,0,0,.88);
-  border-top:1px solid rgba(0,210,230,.08);
+  background:rgba(0,0,0,.85);border-top:1px solid rgba(0,210,230,.08);
   display:flex;align-items:center;justify-content:space-between;
-  padding:8px 16px;
-  font-family:'JetBrains Mono',monospace;
-  font-size:9px;color:rgba(0,210,230,.35);letter-spacing:1px;
-  z-index:50;
+  padding:8px 16px;font-family:monospace;font-size:9px;
+  color:rgba(0,210,230,.35);letter-spacing:1px;z-index:50;
   transition:opacity .3s;
 }
 #hud.hidden{opacity:0;pointer-events:none}
-.hud-dot{
-  width:5px;height:5px;border-radius:50%;
-  background:#f04460;flex-shrink:0;
-}
-.hud-dot.on{background:#00e898;box-shadow:0 0 5px #00e898}
-#hud-exit{
-  background:transparent;border:none;
-  color:rgba(0,210,230,.3);font-family:'JetBrains Mono',monospace;
-  font-size:9px;letter-spacing:1px;cursor:pointer;
-}
-#hud-exit:hover{color:#f04460}
+.dot{width:5px;height:5px;border-radius:50%;background:#f04460;flex-shrink:0}
+.dot.on{background:#00e898;box-shadow:0 0 5px #00e898}
+#btn-exit{background:transparent;border:none;color:rgba(0,210,230,.3);
+  font-family:monospace;font-size:9px;letter-spacing:1px;cursor:pointer;padding:4px 8px}
+#btn-exit:active{color:#f04460}
 
-/* ── FPS corner ── */
-#fps-corner{
-  position:fixed;top:8px;right:10px;
-  font-family:'JetBrains Mono',monospace;
-  font-size:8px;color:rgba(0,210,230,.18);
-  z-index:50;pointer-events:none;
-  letter-spacing:1px;
-}
-
-/* center divider lines (subtle, help alignment) */
-#center-h,#center-v{
-  position:absolute;
-  background:rgba(0,210,230,.04);
-  pointer-events:none;z-index:5;
-}
-#center-h{left:0;right:0;height:1px;top:50%;transform:translateY(-50%)}
-#center-v{top:0;bottom:0;width:1px;left:50%;transform:translateX(-50%)}
+/* FPS */
+#fps{position:fixed;top:8px;right:10px;font-family:monospace;font-size:8px;
+  color:rgba(0,210,230,.18);z-index:50;pointer-events:none;letter-spacing:1px}
 </style>
 </head>
 <body>
 
-<!-- ═══════════════ SETUP SCREEN ═══════════════ -->
+<!-- ═══ SETUP SCREEN ═══ -->
 <div id="setup">
   <h1>◈ KarlCON</h1>
-  <div class="sub">PEPPER'S GHOST · BIM HOLOGRAM · v1.0</div>
+  <div class="sub">PEPPER'S GHOST · BIM HOLOGRAM · v2.0</div>
   <div class="sep"></div>
 
   <label>WEBSOCKET SERVER URL</label>
-  <input type="text" id="ws-url" value="ws://localhost:8765/ws"
-         placeholder="ws://your-ngrok-url/ws"/>
-  <div id="ws-status-setup">● NOT CONNECTED</div>
+  <input type="text" id="ws-url" value="ws://localhost:8765/ws" placeholder="wss://your-relay-url"/>
+  <div id="ws-status">● NOT CONNECTED</div>
 
-  <button class="demo-btn" onclick="testWS()">◇ TEST CONNECTION</button>
-  <button id="btn-launch" onclick="launchGhost()">▶ LAUNCH HOLOGRAM</button>
+  <button class="btn btn-ghost" id="btn-test">◇ TEST CONNECTION</button>
+  <button class="btn btn-primary" id="btn-launch">▶ LAUNCH HOLOGRAM</button>
   <div class="sep"></div>
+  <button class="btn btn-ghost" id="btn-demo">◈ DEMO MODE (no server)</button>
 
-  <button class="demo-btn" onclick="launchDemo()">◈ DEMO MODE (no server)</button>
   <div class="info-row">
     <span>Place phone flat · Pyramid on top</span>
-    <span>Landscape preferred</span>
+    <span>Portrait preferred</span>
   </div>
 </div>
 
-<!-- ═══════════════ GHOST VIEW ═══════════════ -->
-<div id="ghost-wrap">
-  <div id="center-h"></div>
-  <div id="center-v"></div>
-  <div id="quad-grid">
-    <!-- quads injected by JS -->
-  </div>
-  <div id="center-mask"></div>
-  <div id="fps-corner" id="fps-disp">60fps</div>
+<!-- ═══ HOLOGRAM VIEW ═══ -->
+<div id="holo-wrap">
+  <canvas id="holo-canvas"></canvas>
+  <div id="fps">--fps</div>
   <div id="hud">
     <div style="display:flex;align-items:center;gap:8px">
-      <div class="hud-dot" id="hud-dot"></div>
-      <span id="hud-ws-txt">WS OFFLINE</span>
+      <div class="dot" id="ws-dot"></div>
+      <span id="ws-label">WS OFFLINE</span>
     </div>
-    <span id="hud-bim-info">NO BIM</span>
-    <button id="hud-exit" onclick="exitGhost()">✕ EXIT</button>
+    <span id="bim-info">NO BIM</span>
+    <button id="btn-exit">✕ EXIT</button>
   </div>
 </div>
 
-<!-- Three.js r128 — loaded async; buttons work before THREE is ready -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-// Guard: define stubs so onclick handlers never throw ReferenceError
-// even if Three.js hasn't loaded yet. Real impls assigned below after load.
-window._threeReady = false;
-window._pendingLaunch = null;
-
-function _requireThree(action){
-  if(window._threeReady){ action(); return; }
-  // Show user feedback while Three.js loads
-  const st = document.getElementById('ws-status-setup');
-  if(st){ st.className=''; st.textContent='● Loading 3D engine…'; }
-  window._pendingLaunch = action;
-}
-
-// Buttons call these — safe before THREE loads
-function testWS(){
-  const url = document.getElementById('ws-url').value.trim();
-  const st  = document.getElementById('ws-status-setup');
-  st.className=''; st.textContent='● CONNECTING…';
-  try {
-    const ws = new WebSocket(url);
-    ws.onopen  = ()=>{ st.className='ok'; st.textContent='● CONNECTED ✓'; ws.close(); };
-    ws.onerror = ()=>{ st.className='err'; st.textContent='● FAILED — check URL'; };
-    ws.onclose = ()=>{ if(st.textContent==='● CONNECTING…'){ st.className='err'; st.textContent='● CLOSED'; }};
-  } catch(e){ st.className='err'; st.textContent='● ERROR: '+e.message; }
-}
-function launchGhost(){ _requireThree(()=>_launchGhost()); }
-function launchDemo(){  _requireThree(()=>_launchDemo());  }
-function exitGhost(){   if(window._threeReady) _exitGhost(); }
-</script>
-<script async src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"
-  onload="window._onThreeLoaded()"
-  onerror="document.getElementById('ws-status-setup').textContent='● 3D engine failed to load — check internet'">
-</script>
-<script>
-window._onThreeLoaded = function(){
-  window._threeReady = true;
-  const st = document.getElementById('ws-status-setup');
-  if(st && st.textContent === '● Loading 3D engine…'){
-    st.textContent = '● NOT CONNECTED'; st.className = '';
-  }
-  // If user already clicked a button while THREE was loading, fire it now
-  if(window._pendingLaunch){ window._pendingLaunch(); window._pendingLaunch=null; }
-};
-// Main engine — all code that uses THREE lives here
-(function waitForThree(){
-  if(typeof THREE === 'undefined'){ setTimeout(waitForThree, 50); return; }
-  window._threeReady = true;
-  initEngine();
-})();
-function initEngine(){
-/* ═══════════════════════════════ ENGINE START ══════════════════════════════ */
-
-// ═══════════════════════════════════════════════════════
-// KARLCON PEPPER'S GHOST HOLOGRAM ENGINE
-// -------------------------------------------------------
-// Physics:
-//   Pepper's Ghost: 4 identical views of a 3D object
-//   each rotated to point toward the pyramid apex.
-//   Glass panel (45°) reflects screen into floating ghost.
+// ════════════════════════════════════════════════════════════════════════
+// KarlCON Pepper's Ghost — SINGLE RENDERER, 4 VIEWPORTS
+// ════════════════════════════════════════════════════════════════════════
 //
-//   Quadrant layout (phone face-up, pyramid on top):
+// Pepper's Ghost 4-panel portrait layout on phone (e.g. 720×1600):
 //
-//        [  FRONT  ]      ← rotated 0°   (top quad)
-//        [LEFT|RGHT]      ← rotated 90°/270° (sides)
-//        [  BACK   ]      ← rotated 180° (bottom quad)
+//  ┌─────────────────────┐  y=0
+//  │      NORTH (top)    │  h = half = SW/2
+//  ├──────────┬──────────┤  y=half
+//  │  WEST    │  EAST    │  h = mid = SH - 2*half
+//  │ (left)   │ (right)  │
+//  ├──────────┴──────────┤  y=half+mid
+//  │      SOUTH (bot)    │  h = half
+//  └─────────────────────┘  y=SH
 //
-//   Each quad uses its own THREE.js renderer + OrthographicCamera
-//   pointed at the same scene, from a different azimuth.
-//   All rendered on pure black (#000) background.
-// ═══════════════════════════════════════════════════════
+// One WebGLRenderer fills the whole screen canvas.
+// Each panel gets its own camera + setViewport + setScissor.
+// All cameras look at the SAME shared scene from different azimuths.
+// Canvas rotation for each panel is handled by rendering the scene
+// from the correct azimuth — NO CSS rotation needed.
+//
+// OrthographicCamera(-fW, fW, fH, -fH, near, far)
+//   fW = frustum half-width in WORLD UNITS (not pixels)
+//   fH = fW / aspect  (aspect = canvas panel width / height)
+// ════════════════════════════════════════════════════════════════════════
 
-// ── CONFIG ──────────────────────────────────────────────
-const VIEWS = [
-  { id:'front', rot:0,   label:'FRONT' },
-  { id:'right', rot:270, label:'RIGHT' },
-  { id:'back',  rot:180, label:'BACK'  },
-  { id:'left',  rot:90,  label:'LEFT'  },
-];
+// ── Constants ────────────────────────────────────────────────────────────
+var WORLD_HALF   = 16;   // ortho frustum half-width in world units
+var CAM_DIST     = 40;   // camera orbit radius in world units
+var CAM_ELEV_DEG = 20;   // camera elevation angle (degrees)
+var LOOK_AT_Y    = 4.8;  // world-space Y the cameras all point at
 
-// Camera azimuths for each face (degrees from +Z axis)
-const VIEW_AZIMUTH = {
-  front: 0,
-  right: 90,
-  back:  180,
-  left:  270,
-};
-
-const CAMERA_DIST = 35;
-const CAMERA_ELEV = 18; // elevation angle degrees — low angle matches 49.4° pyramid glass optics
-
-// ── STATE ────────────────────────────────────────────────
-let scenes       = {};
-let renderers    = {};
-let cameras      = {};
-let bimGroup     = null;
-let animId       = null;
-let WS           = null;
-let demoMode     = false;
-let demoAngle    = 0;
-let bimParams    = {};
-let isGhostActive= false;
-let hudTimer     = null;
-let fpsCount     = 0;
-let fpsLast      = performance.now();
-
-// ── BIM default params ───────────────────────────────────
-const DEFAULT_GEO = {
+var DEFAULT_GEO = {
   floor_count:  3,
   floor_height: 3.2,
   wing_span:    18,
   depth:        14,
-  holo_colour:  '#00ffe7',
+  holo_colour: '#00ffe7',
   rot:          0,
-  column_grid:  { bays_x: 3, bays_z: 2 },
-  confidence:   0.85,
-  gfa:          756,
-  volume:       2419,
-  columns:      12,
+  column_grid:  {bays_x: 3, bays_z: 2},
+  confidence:   0.85
 };
 
-// ════════════════════════════════════════════════════════
-// SETUP
-// ════════════════════════════════════════════════════════
+// ── State ─────────────────────────────────────────────────────────────────
+var renderer, scene, cameras = {};
+var animId = null;
+var WS = null, wsReconnTimer = null;
+var isLive = false, demoMode = false, demoAngle = 0;
+var bimLoaded = false;
+var hudTimer = null;
+var fpsCount = 0, fpsLast = 0;
 
-function testWS(){
-  const url = document.getElementById('ws-url').value.trim();
-  const st  = document.getElementById('ws-status-setup');
-  st.className='';
-  st.textContent = '● CONNECTING…';
+// GestureCast
+var GC = {
+  seq: -1,
+  cur:  {theta: 0, phi: 0.32, r: CAM_DIST},
+  tgt:  {theta: 0, phi: 0.32, r: CAM_DIST},
+  pending: null,
+  lastRecv: 0
+};
+
+// ── DOM refs (set up after DOM loads) ─────────────────────────────────────
+var elSetup, elHoloWrap, elCanvas, elWsUrl, elWsStatus;
+var elHud, elWsDot, elWsLabel, elBimInfo, elFps;
+
+// ── Boot ──────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', function() {
+  elSetup    = document.getElementById('setup');
+  elHoloWrap = document.getElementById('holo-wrap');
+  elCanvas   = document.getElementById('holo-canvas');
+  elWsUrl    = document.getElementById('ws-url');
+  elWsStatus = document.getElementById('ws-status');
+  elHud      = document.getElementById('hud');
+  elWsDot    = document.getElementById('ws-dot');
+  elWsLabel  = document.getElementById('ws-label');
+  elBimInfo  = document.getElementById('bim-info');
+  elFps      = document.getElementById('fps');
+
+  document.getElementById('btn-test').addEventListener('click',   onTestWS);
+  document.getElementById('btn-launch').addEventListener('click', onLaunch);
+  document.getElementById('btn-demo').addEventListener('click',   onDemo);
+  document.getElementById('btn-exit').addEventListener('click',   onExit);
+
+  // Tap anywhere during hologram to flash HUD
+  document.addEventListener('click', function() {
+    if(isLive) flashHUD();
+  });
+
+  document.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+});
+
+// ── Button handlers ───────────────────────────────────────────────────────
+function onTestWS() {
+  var url = elWsUrl.value.trim();
+  setStatus('● CONNECTING…', '');
   try {
-    const ws = new WebSocket(url);
-    ws.onopen  = ()=>{ st.className='ok'; st.textContent='● CONNECTED ✓'; ws.close(); };
-    ws.onerror = ()=>{ st.className='err'; st.textContent='● FAILED — check URL'; };
-    ws.onclose = ()=>{ if(st.textContent==='● CONNECTING…'){ st.className='err'; st.textContent='● CLOSED'; }};
-  } catch(e){
-    st.className='err'; st.textContent='● ERROR: '+e.message;
+    var ws = new WebSocket(url);
+    ws.onopen  = function(){ setStatus('● CONNECTED ✓', 'ok'); ws.close(); };
+    ws.onerror = function(){ setStatus('● FAILED — check URL', 'err'); };
+    ws.onclose = function(){
+      if(elWsStatus.textContent === '● CONNECTING…')
+        setStatus('● CLOSED', 'err');
+    };
+  } catch(e) {
+    setStatus('● ERROR: ' + e.message, 'err');
   }
 }
 
-function _launchGhost(){
-  const url = document.getElementById('ws-url').value.trim();
+function onLaunch() {
   demoMode = false;
-  initGhost();
-  connectWS(url);
-  document.getElementById('setup').style.display='none';
-  document.getElementById('ghost-wrap').style.display='block';
-  isGhostActive = true;
-  startRenderLoop();
-  showHUDBriefly();
-  requestFullscreen();
+  startHologram();
+  connectWS(elWsUrl.value.trim());
 }
 
-function _launchDemo(){
+function onDemo() {
   demoMode = true;
-  initGhost();
-  document.getElementById('setup').style.display='none';
-  document.getElementById('ghost-wrap').style.display='block';
-  isGhostActive = true;
+  startHologram();
   buildBIM(DEFAULT_GEO);
-  startRenderLoop();
-  showHUDBriefly();
-  requestFullscreen();
 }
 
-function _exitGhost(){
-  isGhostActive = false;
-  if(animId){ cancelAnimationFrame(animId); animId=null; }
-  if(WS){ WS.close(); WS=null; }
-  PANEL_IDS.forEach(id=>{ if(renderers[id]) renderers[id].dispose(); });
-  scenes={};renderers={};cameras={};bimGroup=null;
-  document.getElementById('ghost-wrap').style.display='none';
-  document.getElementById('quad-grid').innerHTML='';
-  document.getElementById('setup').style.display='flex';
-  exitFullscreen();
+function onExit() {
+  stopHologram();
 }
 
-function requestFullscreen(){
-  const el = document.documentElement;
-  (el.requestFullscreen||el.webkitRequestFullscreen||el.mozRequestFullScreen||function(){})
-    .call(el);
-}
-function exitFullscreen(){
-  (document.exitFullscreen||document.webkitExitFullscreen||function(){})
-    .call(document);
+// ── Status helper ─────────────────────────────────────────────────────────
+function setStatus(msg, cls) {
+  elWsStatus.textContent = msg;
+  elWsStatus.className = cls;
 }
 
-// ════════════════════════════════════════════════════════
-// GHOST INIT — portrait-aware 4-quadrant layout
-// ════════════════════════════════════════════════════════
-//
-// A06 is 720×1600 portrait. Square 2×2 grid wastes 880px.
-// Correct Pepper's Ghost portrait layout:
-//
-//   ┌──────────────────────┐  ← full width  (Panel N / FRONT)
-//   │         N            │    h = half
-//   ├──────────┬───────────┤
-//   │    W     │     E     │  ← each half-width (Panels W/E)
-//   │  (left)  │  (right)  │    h = full screen - 2×halfW
-//   ├──────────┴───────────┤
-//   │         S            │  ← full width  (Panel S / BACK)
-//   └──────────────────────┘    h = half
-//
-// half = W/2, so N/S are W×(W/2), E/W are (W/2)×(H-W)
-// This fills the full screen with no dead zones.
-// Each panel renders a square viewport cropped from its canvas.
+// ── Hologram lifecycle ────────────────────────────────────────────────────
+function startHologram() {
+  // Show hologram view, hide setup
+  elSetup.style.display    = 'none';
+  elHoloWrap.style.display = 'block';
+  isLive = true;
 
-function initGhost(){
-  const grid = document.getElementById('quad-grid');
-  grid.innerHTML = '';
-
-  const SW = window.innerWidth;   // screen width  (720 on A06)
-  const SH = window.innerHeight;  // screen height (1600 on A06)
-  const half = Math.floor(SW / 2);  // 360
-
-  // Portrait layout: 3 rows
-  // Row 0 (N):  SW × half
-  // Row 1 (mid): SW × (SH - 2*half), split into W(half×mid) + E(half×mid)
-  // Row 2 (S):  SW × half
-  const mid = SH - 2 * half;  // centre band height (880 on A06)
-
-  // Use largest square that fits in each panel for the render canvas
-  // N/S panels: SW wide, half tall → square = min(SW, half) = half (360)
-  // E/W panels: half wide, mid tall → square = min(half, mid) = half (360)
-  // All render canvases are half×half = 360×360 ✓
-
-  grid.style.cssText = `
-    position:absolute;
-    left:0;top:0;
-    width:${SW}px;height:${SH}px;
-    display:block;
-  `;
-
-  // Center mask
-  const mask = document.getElementById('center-mask');
-  const mSize = Math.floor(half * 0.12);
-  mask.style.width  = mSize + 'px';
-  mask.style.height = mSize + 'px';
-  mask.style.left   = Math.floor(SW/2 - mSize*Math.SQRT1_2) + 'px';
-  mask.style.top    = Math.floor(half + mid/2 - mSize*Math.SQRT1_2) + 'px';
-
-  // Panel definitions
-  // canvasRot: CSS rotation applied to the render canvas so ghost faces viewer
-  // azimuth: camera orbit angle around Y
-  // panelX/Y/W/H: position of div on screen
-  // World-unit frustum: BIM buildings are ~18m wide × ~10m tall.
-  // N/S panels: landscape (SW×half) — render SW×half, rotate 0°/180°
-  // E/W panels: CSS-rotated 90°/270° — render into MID×HALF (pre-rotated)
-  //   so after CSS rotation the on-screen image is HALF×MID (portrait strip)
-  //   with landscape proportions matching the building footprint.
-  const WORLD_HALF = 14;  // world units; building ~9m half-width → fits with margin
-
-  const panelDefs = [
-    {
-      id:'north', azimuth:0,   canvasRot:180,
-      x:0, y:0, w:SW, h:half,
-      cvW:SW, cvH:half,     // landscape canvas
-      frustW: WORLD_HALF,
-    },
-    {
-      id:'west',  azimuth:270, canvasRot:90,
-      x:0, y:half, w:half, h:mid,
-      cvW:mid, cvH:half,    // pre-rotated: mid×half → after 90° CSS → half×mid on screen
-      frustW: WORLD_HALF,
-    },
-    {
-      id:'east',  azimuth:90,  canvasRot:270,
-      x:half, y:half, w:half, h:mid,
-      cvW:mid, cvH:half,    // pre-rotated: mid×half → after 270° CSS → half×mid on screen
-      frustW: WORLD_HALF,
-    },
-    {
-      id:'south', azimuth:180, canvasRot:0,
-      x:0, y:half+mid, w:SW, h:half,
-      cvW:SW, cvH:half,     // landscape canvas
-      frustW: WORLD_HALF,
-    },
-  ];
-
-  panelDefs.forEach(pd => {
-    const div = document.createElement('div');
-    div.className = 'quad';
-    div.id = 'quad-' + pd.id;
-    div.style.cssText = `
-      position:absolute;
-      left:${pd.x}px;top:${pd.y}px;
-      width:${pd.w}px;height:${pd.h}px;
-      overflow:hidden;
-    `;
-
-    const cvs = document.createElement('canvas');
-    cvs.width  = pd.cvW;
-    cvs.height = pd.cvH;
-    // Centre canvas inside div (it may be taller than div for W/E panels)
-    cvs.style.cssText = `
-      position:absolute;
-      left:50%;top:50%;
-      transform:translate(-50%,-50%) rotate(${pd.canvasRot}deg);
-      transform-origin:50% 50%;
-    `;
-    div.appendChild(cvs);
-    grid.appendChild(div);
-
-    // ── Three.js per-panel ─────────────────────────────
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x000000);
-
-    // Ortho frustum: world-unit half-widths so building fills each panel.
-    // fW = half-width along panel's horizontal axis in world units.
-    // fH = fW / aspect so the frustum matches the canvas shape exactly.
-    // WORLD_HALF=18 → building ±9m fits with comfortable margin in all panels.
-    const aspect = pd.cvW / pd.cvH;
-    const fW = pd.frustW;           // world half-width (horizontal)
-    const fH = fW / aspect;         // world half-height (vertical) — correct for ortho
-    const cam = new THREE.OrthographicCamera(-fW, fW, fH, -fH, 0.1, 500);
-
-    const az = pd.azimuth * Math.PI / 180;
-    const el = CAMERA_ELEV * Math.PI / 180;
-    cam.position.set(
-      CAMERA_DIST * Math.sin(az) * Math.cos(el),
-      CAMERA_DIST * Math.sin(el),
-      CAMERA_DIST * Math.cos(az) * Math.cos(el)
-    );
-    cam.lookAt(0, 4.8, 0);  // aim at building mid-height (default 3F × 3.2m / 2)
-
-    const renderer = new THREE.WebGLRenderer({ canvas: cvs, antialias: true, alpha: false });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setSize(pd.cvW, pd.cvH);
-
-    // Lights
-    const ambient = new THREE.AmbientLight(0x002233, 2.0);
-    scene.add(ambient);
-    const dirLight = new THREE.DirectionalLight(0x00ffe7, 1.2);
-    dirLight.position.set(10, 20, 10);
-    scene.add(dirLight);
-
-    scenes[pd.id]    = scene;
-    cameras[pd.id]   = cam;
-    renderers[pd.id] = renderer;
-  });
-
-  // Store layout params for resize
-  window._karlLayout = { half, mid, SW, SH };
+  initRenderer();
+  initScene();
+  initCameras();
+  startLoop();
+  flashHUD();
+  tryFullscreen();
 }
 
-// ════════════════════════════════════════════════════════
-// BIM BUILDER — same schema as karlcon_bim_hologram_v8
-// ════════════════════════════════════════════════════════
+function stopHologram() {
+  isLive = false;
 
-const PANEL_IDS = ['north','south','east','west'];
+  if(animId){ cancelAnimationFrame(animId); animId = null; }
+  if(WS){ WS.close(); WS = null; }
+  if(wsReconnTimer){ clearTimeout(wsReconnTimer); wsReconnTimer = null; }
 
-function buildBIM(geo){
-  const IDS = PANEL_IDS;
-
-  // Remove existing bimGroups from all scenes
-  IDS.forEach(id=>{
-    const old = scenes[id]?.getObjectByName('bimGroup');
-    if(old) scenes[id].remove(old);
-  });
-
-  const nF   = geo.floor_count  || 3;
-  const fH   = geo.floor_height || 3.2;
-  const W    = geo.wing_span    || 18;
-  const D    = geo.depth        || 14;
-  const col  = new THREE.Color(geo.holo_colour || '#00ffe7');
-  const rotY = (geo.rot || 0) * Math.PI / 180;
-
-  const matLine = new THREE.LineBasicMaterial({ color:col, transparent:true, opacity:0.85 });
-  const matSlab = new THREE.MeshBasicMaterial({ color:col, transparent:true, opacity:0.08, side:THREE.DoubleSide });
-  const matCol  = new THREE.MeshBasicMaterial({ color:col, transparent:true, opacity:0.18, side:THREE.DoubleSide });
-  const matFace = new THREE.MeshBasicMaterial({ color:col, transparent:true, opacity:0.05, side:THREE.DoubleSide });
-
-  function makeBIMGroup(){
-    const g = new THREE.Group();
-    g.name = 'bimGroup';
-
-    // Floor grid lines
-    for(let i=0;i<=nF;i++){
-      const y = i * fH;
-      const pts = [
-        new THREE.Vector3(-W/2,y,-D/2),
-        new THREE.Vector3( W/2,y,-D/2),
-        new THREE.Vector3( W/2,y, D/2),
-        new THREE.Vector3(-W/2,y, D/2),
-        new THREE.Vector3(-W/2,y,-D/2),
-      ];
-      g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), matLine));
-    }
-    // Vertical edges
-    [[-W/2,-D/2],[ W/2,-D/2],[ W/2, D/2],[-W/2, D/2]].forEach(([x,z])=>{
-      const pts=[new THREE.Vector3(x,0,z),new THREE.Vector3(x,nF*fH,z)];
-      g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), matLine));
-    });
-
-    // Floor slabs
-    const slabGeo = new THREE.PlaneGeometry(W, D);
-    for(let i=0;i<=nF;i++){
-      const m = new THREE.Mesh(slabGeo, matSlab);
-      m.rotation.x = -Math.PI/2; m.position.y = i*fH;
-      g.add(m);
-    }
-
-    // Columns
-    const baysX = geo.column_grid?.bays_x || Math.max(1, Math.round(W/6));
-    const baysZ = geo.column_grid?.bays_z || Math.max(1, Math.round(D/5));
-    const sx = W/baysX, sz = D/baysZ;
-    const colGeo = new THREE.BoxGeometry(0.4, nF*fH, 0.4);
-    for(let i=0;i<=baysX;i++) for(let j=0;j<=baysZ;j++){
-      const m = new THREE.Mesh(colGeo, matCol);
-      m.position.set(-W/2+i*sx, nF*fH/2, -D/2+j*sz);
-      g.add(m);
-    }
-
-    // Facade (transparent shell)
-    const facGeo = new THREE.BoxGeometry(W, nF*fH, D);
-    g.add(new THREE.Mesh(facGeo, matFace));
-
-    // Wireframe on top of facade
-    const wireGeo = new THREE.EdgesGeometry(facGeo);
-    g.add(new THREE.LineSegments(wireGeo, new THREE.LineBasicMaterial({color:col,transparent:true,opacity:0.3})));
-
-    // Center the building vertically
-    g.position.y = 0;
-    g.rotation.y = rotY;
-    return g;
-  }
-
-  // Add a copy of the group to each scene
-  IDS.forEach(id=>{
-    if(!scenes[id]) return;
-    const grp = makeBIMGroup();
-    scenes[id].add(grp);
-  });
-
-  bimParams = geo;
-  updateHUD(geo);
-}
-
-// ════════════════════════════════════════════════════════
-// RENDER LOOP
-// ════════════════════════════════════════════════════════
-
-function startRenderLoop(){
-  if(animId) cancelAnimationFrame(animId);
-  let lastT = performance.now();
-
-  function frame(now){
-    if(!isGhostActive) return;
-    animId = requestAnimationFrame(frame);
-
-    // GestureCast: interpolate camera FIRST before any render (Fix A1/A2/A3)
-    tickGestureCast(now);
-
-    // FPS
-    fpsCount++;
-    if(now - fpsLast >= 600){
-      const fps = Math.round(fpsCount * 1000 / (now - fpsLast));
-      fpsCount = 0; fpsLast = now;
-      const el = document.getElementById('fps-corner');
-      if(el) el.textContent = fps + 'fps';
-    }
-
-    // Demo mode: slow rotate the building
-    if(demoMode && bimParams.floor_count){
-      demoAngle += 0.003;
-      PANEL_IDS.forEach(id=>{
-        const grp = scenes[id]?.getObjectByName('bimGroup');
-        if(grp) grp.rotation.y = demoAngle;
-      });
-    }
-
-    // Hologram pulse
-    const t = now * 0.001;
-    const pulse = 0.7 + 0.3 * Math.sin(t * 1.4);
-    PANEL_IDS.forEach(id=>{
-      const grp = scenes[id]?.getObjectByName('bimGroup');
-      if(!grp) return;
-      grp.traverse(obj=>{
-        if(obj.material){
-          const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
-          mats.forEach(m=>{ if(m.opacity!==undefined && m.opacity>0.01) m.opacity = m.opacity; });
-        }
-      });
-    });
-
-    // Render all 4 views
-    PANEL_IDS.forEach(id=>{
-      if(renderers[id] && scenes[id] && cameras[id]){
-        renderers[id].render(scenes[id], cameras[id]);
+  // Dispose Three.js resources
+  if(scene) {
+    scene.traverse(function(obj) {
+      if(obj.geometry) obj.geometry.dispose();
+      if(obj.material) {
+        if(Array.isArray(obj.material)) obj.material.forEach(function(m){ m.dispose(); });
+        else obj.material.dispose();
       }
     });
-
-    lastT = now;
   }
+  if(renderer) { renderer.dispose(); renderer = null; }
+  scene    = null;
+  cameras  = {};
+  bimLoaded = false;
+  demoAngle = 0;
+  GC.seq = -1;
+  GC.cur  = {theta:0, phi:0.32, r:CAM_DIST};
+  GC.tgt  = {theta:0, phi:0.32, r:CAM_DIST};
+  GC.pending = null;
+
+  elHoloWrap.style.display = 'none';
+  elSetup.style.display    = 'flex';
+  exitFullscreen();
+  setWSDot(false);
+}
+
+// ── Three.js init ─────────────────────────────────────────────────────────
+function initRenderer() {
+  var W = window.innerWidth;
+  var H = window.innerHeight;
+
+  elCanvas.width  = W;
+  elCanvas.height = H;
+
+  renderer = new THREE.WebGLRenderer({
+    canvas:    elCanvas,
+    antialias: true,
+    alpha:     false
+  });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(W, H, false);
+  renderer.autoClear = false;  // CRITICAL: we clear manually per viewport
+  renderer.setClearColor(0x000000, 1);
+}
+
+function initScene() {
+  scene = new THREE.Scene();
+  scene.background = null; // transparent — renderer.clear() handles black
+
+  var ambient  = new THREE.AmbientLight(0x003344, 2.5);
+  var dirLight = new THREE.DirectionalLight(0x00ffe7, 1.5);
+  dirLight.position.set(10, 20, 10);
+  scene.add(ambient);
+  scene.add(dirLight);
+}
+
+// Each camera orbits the origin from a different azimuth angle.
+// The 4 azimuths (N=0, E=90, S=180, W=270) map to the 4 glass panels.
+// Panel screen positions for portrait phone layout:
+//   north  : top strip     (x=0,   y=0,    w=SW,   h=half)
+//   west   : left column   (x=0,   y=half, w=half, h=mid )
+//   east   : right column  (x=half,y=half, w=half, h=mid )
+//   south  : bottom strip  (x=0,   y=H-half,w=SW,  h=half)
+function initCameras() {
+  var W    = window.innerWidth;
+  var H    = window.innerHeight;
+  var half = Math.floor(W / 2);
+  var mid  = H - 2 * half;
+
+  // elevation in radians
+  var elev = CAM_ELEV_DEG * Math.PI / 180;
+
+  // Panel definitions: id, azimuthDeg, viewport [x,y,w,h] in CSS pixels
+  // setViewport uses bottom-left origin in Three.js (WebGL convention),
+  // so y_bottomleft = H - (css_top + panel_height)
+  var panels = [
+    { id:'north', az:  0, vx:0,    vy:H-half,        vw:W,    vh:half },
+    { id:'west',  az:270, vx:0,    vy:H-half-mid,     vw:half, vh:mid  },
+    { id:'east',  az: 90, vx:half, vy:H-half-mid,     vw:half, vh:mid  },
+    { id:'south', az:180, vx:0,    vy:0,              vw:W,    vh:half }
+  ];
+
+  panels.forEach(function(p) {
+    var aspect = p.vw / p.vh;
+    var fW = WORLD_HALF;
+    var fH = fW / aspect;
+
+    var cam = new THREE.OrthographicCamera(-fW, fW, fH, -fH, 0.1, 500);
+
+    // Position camera on sphere at azimuth + elevation
+    var az = p.az * Math.PI / 180;
+    cam.position.set(
+      CAM_DIST * Math.sin(az) * Math.cos(elev),
+      CAM_DIST * Math.sin(elev),
+      CAM_DIST * Math.cos(az) * Math.cos(elev)
+    );
+    cam.lookAt(0, LOOK_AT_Y, 0);
+
+    // Store viewport info on camera for use in render loop
+    cam.userData = { vx:p.vx, vy:p.vy, vw:p.vw, vh:p.vh, az:p.az };
+
+    cameras[p.id] = cam;
+  });
+
+  // Store layout for GestureCast
+  window._layout = { W:W, H:H, half:half, mid:mid };
+}
+
+// ── Render loop ───────────────────────────────────────────────────────────
+function startLoop() {
+  fpsCount = 0;
+  fpsLast  = performance.now();
   animId = requestAnimationFrame(frame);
 }
 
-// ════════════════════════════════════════════════════════
-// WEBSOCKET
-// ════════════════════════════════════════════════════════
+function frame(now) {
+  if(!isLive) return;
+  animId = requestAnimationFrame(frame);
 
-let wsReconnectTimer = null;
+  // GestureCast: smooth camera orbit
+  tickGC(now);
 
-function connectWS(url){
-  if(WS && WS.readyState<=1){ WS.close(); }
-  if(wsReconnectTimer){ clearTimeout(wsReconnectTimer); wsReconnectTimer=null; }
-  try {
-    WS = new WebSocket(url);
-  } catch(e){ setHUDWS(false); return; }
+  // Demo rotation
+  if(demoMode && bimLoaded) {
+    demoAngle += 0.003;
+    var bimGrp = scene.getObjectByName('bimGroup');
+    if(bimGrp) bimGrp.rotation.y = demoAngle;
+  }
 
-  WS.onopen = ()=>{
-    setHUDWS(true);
-    WS.send(JSON.stringify({type:'health'}));
-    // Request latest BIM immediately
-    WS.send(JSON.stringify({type:'get_bim'}));
-  };
-  WS.onclose = ()=>{
-    setHUDWS(false);
-    wsReconnectTimer = setTimeout(()=>connectWS(url), 5000);
-  };
-  WS.onerror = ()=>{ setHUDWS(false); };
-  WS.onmessage = e=>{
-    try {
-      const msg = JSON.parse(e.data);
-      handleMsg(msg);
-    } catch(_){}
-  };
-}
+  // FPS counter
+  fpsCount++;
+  if(now - fpsLast >= 700) {
+    var fps = Math.round(fpsCount * 1000 / (now - fpsLast));
+    fpsCount = 0; fpsLast = now;
+    if(elFps) elFps.textContent = fps + 'fps';
+  }
 
-function handleMsg(msg){
-  if(msg.type==='result'){
-    if(msg.endpoint==='decode' && msg.data?.geometry){
-      buildBIM(msg.data.geometry);
-    } else if(msg.endpoint==='get_bim' && msg.data?.geometry){
-      buildBIM(msg.data.geometry);
-    } else if(msg.endpoint==='health'){
-      // healthy
-    }
-  } else if(msg.type==='bim_update' && msg.geometry){
-    // Push notification from server: new BIM data
-    buildBIM(msg.geometry);
-  } else if(msg.type==='geometry' && msg.data){
-    buildBIM(msg.data);
-  } else if(msg.type==='bim_transform'){
-    // GestureCast: buffer for rAF interpolation (Fix A1); seq for RFC-3550 guard (Fix R2)
-    applyRemoteTransform(msg.theta, msg.phi, msg.radius, msg.seq);
+  // Render 4 viewports into single canvas
+  renderer.clear();
+  var ids = ['north','west','east','south'];
+  for(var i = 0; i < ids.length; i++) {
+    var cam = cameras[ids[i]];
+    if(!cam) continue;
+    var vd = cam.userData;
+    renderer.setViewport(vd.vx, vd.vy, vd.vw, vd.vh);
+    renderer.setScissor( vd.vx, vd.vy, vd.vw, vd.vh);
+    renderer.setScissorTest(true);
+    renderer.render(scene, cam);
   }
 }
 
-// ── GestureCast Interpolation Engine ────────────────────────────────────────
-// Fixes: A1 (mid-rAF camera mutation), A2 (20→60Hz EMA lerp), A3 (dead-reckoning)
-//
-// [1] Gambetta (2018) "Entity Interpolation" — double-buffer: WS writes GC.pending;
-//     rAF reads + clears → no mid-frame camera mutation.
-// [2] Pantel & Wolf (2002) EMA α=0.18 @ 60Hz → 95% reach in ≈267ms, smooths 20Hz jitter.
-// [3] Steed & Oliveira (2010) §18.4 — velocity extrapolation when packets stale >150ms.
-// [4] RFC 3550 §5.1 — monotonic seq to discard out-of-order cloudflared packets.
+// ── GestureCast ───────────────────────────────────────────────────────────
+// Smooth interpolation of remote theta/phi/radius from WS into all cameras.
+var GC_ALPHA = 0.15; // EMA coefficient
 
-const GC = {
-  seq:     -1,
-  prev:    {theta: 0.5, phi: 0.9, radius: 30},  // smoothed interpolated state
-  target:  {theta: 0.5, phi: 0.9, radius: 30},  // latest received target
-  vel:     {theta: 0,   phi: 0,   radius: 0  },  // velocity for dead-reckoning [3]
-  pending: null,        // written by WS.onmessage; consumed by rAF tickGestureCast [1]
-  lastRecv: 0,          // DOMHighResTimeStamp of last received packet
-  PACKET_TIMEOUT: 150,  // ms: threshold before velocity extrapolation kicks in [3]
-  LERP_ALPHA:     0.18, // EMA coeff [2]: smooth but responsive at 60Hz
-};
-
-/**
- * tickGestureCast — called at START of every rAF frame (Fix A1).
- * 1. Consume WS pending state (double-buffer; prevents mid-frame mutation) [1].
- * 2. Dead-reckoning extrapolation when packets are late (>150ms) [3].
- * 3. EMA spherical lerp prev → effective target [2].
- * 4. Write smoothed coords to all 4 cameras (single write-point per frame).
- */
-function tickGestureCast(now){
-  if(!cameras || !isGhostActive) return;
-
-  // Step 1: consume pending (Gambetta double-buffer) [1]
-  if(GC.pending !== null){
-    const p = GC.pending;
+function tickGC(now) {
+  // Consume pending WS packet
+  if(GC.pending !== null) {
+    var p = GC.pending;
     GC.pending = null;
-    // RFC 3550 seq guard: discard out-of-order/duplicate packets [4]
-    if(p.seq !== undefined && p.seq <= GC.seq){
-      /* stale packet — discard silently */
+    if(p.seq !== undefined && p.seq <= GC.seq) {
+      // stale — discard
     } else {
       if(p.seq !== undefined) GC.seq = p.seq;
-      // Velocity = Δstate/Δtime for dead-reckoning [3]
-      const dt = now - GC.lastRecv;
-      if(dt > 5 && dt < GC.PACKET_TIMEOUT){
-        GC.vel.theta  = (p.theta  - GC.target.theta)  / dt;
-        GC.vel.phi    = (p.phi    - GC.target.phi)    / dt;
-        GC.vel.radius = (p.radius - GC.target.radius) / dt;
-      }
-      GC.target   = {theta: p.theta, phi: p.phi, radius: p.radius};
-      GC.lastRecv = now;
+      GC.tgt.theta = p.theta !== undefined ? p.theta : GC.tgt.theta;
+      GC.tgt.phi   = p.phi   !== undefined ? p.phi   : GC.tgt.phi;
+      GC.tgt.r     = p.r     !== undefined ? p.r     : (p.radius !== undefined ? p.radius : GC.tgt.r);
+      GC.lastRecv  = now;
     }
   }
 
-  // Step 2: dead-reckoning extrapolation [3]
-  const stale = now - GC.lastRecv;
-  let effTheta  = GC.target.theta;
-  let effPhi    = GC.target.phi;
-  let effRadius = GC.target.radius;
-  if(stale > GC.PACKET_TIMEOUT && stale < 1200){
-    const extMs = Math.min(stale - GC.PACKET_TIMEOUT, 500);
-    effTheta  = GC.target.theta  + GC.vel.theta  * extMs;
-    effPhi    = Math.max(0.05, Math.min(Math.PI - 0.05,
-                  GC.target.phi + GC.vel.phi * extMs));
-    effRadius = Math.max(8, Math.min(80,
-                  GC.target.radius + GC.vel.radius * extMs));
+  // EMA lerp current → target
+  GC.cur.theta = GC.cur.theta + GC_ALPHA * (GC.tgt.theta - GC.cur.theta);
+  GC.cur.phi   = GC.cur.phi   + GC_ALPHA * (GC.tgt.phi   - GC.cur.phi);
+  GC.cur.r     = GC.cur.r     + GC_ALPHA * (GC.tgt.r     - GC.cur.r);
+
+  // Only move cameras if GC is active (got at least one remote packet)
+  if(GC.lastRecv === 0) return;
+
+  var elev = GC.cur.phi;
+  var r    = GC.cur.r;
+  var ids  = ['north','west','east','south'];
+  var azimuths = {north:0, west:270, east:90, south:180};
+  for(var i = 0; i < ids.length; i++) {
+    var id  = ids[i];
+    var cam = cameras[id];
+    if(!cam) continue;
+    var baseAz = azimuths[id] * Math.PI / 180;
+    var az = baseAz + GC.cur.theta;
+    cam.position.set(
+      r * Math.sin(az) * Math.cos(elev),
+      r * Math.sin(elev),
+      r * Math.cos(az) * Math.cos(elev)
+    );
+    cam.lookAt(0, LOOK_AT_Y, 0);
+  }
+}
+
+// ── BIM Builder ───────────────────────────────────────────────────────────
+function buildBIM(geo) {
+  if(!scene) return;
+
+  // Remove old BIM
+  var old = scene.getObjectByName('bimGroup');
+  if(old) {
+    old.traverse(function(o){
+      if(o.geometry) o.geometry.dispose();
+      if(o.material) {
+        if(Array.isArray(o.material)) o.material.forEach(function(m){m.dispose();});
+        else o.material.dispose();
+      }
+    });
+    scene.remove(old);
   }
 
-  // Step 3: EMA spherical lerp [2]
-  const α = GC.LERP_ALPHA;
-  GC.prev.theta  += α * (effTheta  - GC.prev.theta);
-  GC.prev.phi    += α * (effPhi    - GC.prev.phi);
-  GC.prev.radius += α * (effRadius - GC.prev.radius);
+  var nF  = geo.floor_count  || 3;
+  var fH  = geo.floor_height || 3.2;
+  var W   = geo.wing_span    || 18;
+  var D   = geo.depth        || 14;
+  var col = new THREE.Color(geo.holo_colour || '#00ffe7');
+  var rotY = (geo.rot || 0) * Math.PI / 180;
 
-  // Step 4: apply smoothed state to all 4 cameras (only write-point per frame)
-  _applySmoothCameraState(GC.prev.theta, GC.prev.phi, GC.prev.radius);
-}
+  var matLine = new THREE.LineBasicMaterial({color:col, transparent:true, opacity:0.9});
+  var matSlab = new THREE.MeshBasicMaterial({color:col, transparent:true, opacity:0.07, side:THREE.DoubleSide});
+  var matPil  = new THREE.MeshBasicMaterial({color:col, transparent:true, opacity:0.2,  side:THREE.DoubleSide});
+  var matFace = new THREE.MeshBasicMaterial({color:col, transparent:true, opacity:0.04, side:THREE.DoubleSide});
 
-/** Camera setter — called ONLY from tickGestureCast inside rAF. */
-function _applySmoothCameraState(theta, phi, radius){
-  const azMap = {north: 0, south: 180, west: 270, east: 90};
-  Object.entries(azMap).forEach(([id, azDeg]) => {
-    const cam = cameras[id];
-    if(!cam) return;
-    const az = (azDeg * Math.PI / 180) + theta;
-    cam.position.set(
-      radius * Math.sin(az) * Math.cos(phi),
-      radius * Math.sin(phi),
-      radius * Math.cos(az) * Math.cos(phi)
-    );
-    cam.lookAt(0, 4.8, 0);
+  var grp = new THREE.Group();
+  grp.name = 'bimGroup';
+
+  // Floor perimeter lines
+  for(var i = 0; i <= nF; i++) {
+    var y = i * fH;
+    var pts = [
+      new THREE.Vector3(-W/2, y, -D/2),
+      new THREE.Vector3( W/2, y, -D/2),
+      new THREE.Vector3( W/2, y,  D/2),
+      new THREE.Vector3(-W/2, y,  D/2),
+      new THREE.Vector3(-W/2, y, -D/2)
+    ];
+    grp.add(new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(pts),
+      matLine
+    ));
+  }
+
+  // Vertical corner edges
+  var corners = [[-W/2,-D/2],[W/2,-D/2],[W/2,D/2],[-W/2,D/2]];
+  corners.forEach(function(c) {
+    var p = [new THREE.Vector3(c[0],0,c[1]), new THREE.Vector3(c[0],nF*fH,c[1])];
+    grp.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(p), matLine));
   });
+
+  // Floor slabs
+  var slabGeo = new THREE.PlaneGeometry(W, D);
+  for(var i = 0; i <= nF; i++) {
+    var slab = new THREE.Mesh(slabGeo, matSlab);
+    slab.rotation.x = -Math.PI/2;
+    slab.position.y = i * fH;
+    grp.add(slab);
+  }
+
+  // Columns (pillar grid)
+  var baysX = (geo.column_grid && geo.column_grid.bays_x) || Math.max(1, Math.round(W/6));
+  var baysZ = (geo.column_grid && geo.column_grid.bays_z) || Math.max(1, Math.round(D/5));
+  var sx = W / baysX, sz = D / baysZ;
+  var pilGeo = new THREE.BoxGeometry(0.4, nF*fH, 0.4);
+  for(var xi = 0; xi <= baysX; xi++) {
+    for(var zi = 0; zi <= baysZ; zi++) {
+      var pil = new THREE.Mesh(pilGeo, matPil);
+      pil.position.set(-W/2 + xi*sx, nF*fH/2, -D/2 + zi*sz);
+      grp.add(pil);
+    }
+  }
+
+  // Façade shell + wireframe
+  var facGeo  = new THREE.BoxGeometry(W, nF*fH, D);
+  var facMesh = new THREE.Mesh(facGeo, matFace);
+  facMesh.position.y = nF*fH/2;
+  grp.add(facMesh);
+
+  var wireGeo = new THREE.EdgesGeometry(facGeo);
+  var wireMat = new THREE.LineBasicMaterial({color:col, transparent:true, opacity:0.3});
+  var wire    = new THREE.LineSegments(wireGeo, wireMat);
+  wire.position.y = nF*fH/2;
+  grp.add(wire);
+
+  grp.rotation.y = rotY;
+  scene.add(grp);
+  bimLoaded = true;
+
+  // Update HUD info
+  if(elBimInfo) {
+    elBimInfo.textContent = nF+'F \u00b7 '+W+'\u00d7'+D+'m';
+  }
 }
 
-/**
- * applyRemoteTransform — WS onmessage handler entry point.
- * Writes to GC.pending ONLY; no camera mutation here (Fix A1).
- * seq passed from relay-stamped message for RFC-3550 guard (Fix R2).
- */
-function applyRemoteTransform(theta, phi, radius, seq){
-  GC.pending = {
-    theta:  (theta  !== undefined) ? theta  : 0.5,
-    phi:    (phi    !== undefined) ? phi    : 0.9,
-    radius: (radius !== undefined) ? radius : 30,
-    seq:    seq,
+// ── WebSocket ─────────────────────────────────────────────────────────────
+function connectWS(url) {
+  if(WS && WS.readyState <= 1) { WS.close(); WS = null; }
+  if(wsReconnTimer) { clearTimeout(wsReconnTimer); wsReconnTimer = null; }
+  try {
+    WS = new WebSocket(url);
+  } catch(e) {
+    setWSDot(false);
+    return;
+  }
+  WS.onopen = function() {
+    setWSDot(true);
+    WS.send(JSON.stringify({type:'health'}));
+    WS.send(JSON.stringify({type:'get_bim'}));
+  };
+  WS.onclose = function() {
+    setWSDot(false);
+    if(isLive) {
+      wsReconnTimer = setTimeout(function(){ connectWS(url); }, 5000);
+    }
+  };
+  WS.onerror = function() {
+    setWSDot(false);
+  };
+  WS.onmessage = function(e) {
+    try {
+      handleMsg(JSON.parse(e.data));
+    } catch(_) {}
   };
 }
 
-// ════════════════════════════════════════════════════════
-// HUD
-// ════════════════════════════════════════════════════════
-
-function setHUDWS(online){
-  const dot = document.getElementById('hud-dot');
-  const txt = document.getElementById('hud-ws-txt');
-  if(dot){ dot.className = 'hud-dot' + (online ? ' on' : ''); }
-  if(txt){ txt.textContent = online ? 'WS ONLINE' : 'WS OFFLINE'; }
+function handleMsg(msg) {
+  if(!msg || !msg.type) return;
+  if(msg.type === 'bim_update' && msg.geometry) {
+    buildBIM(msg.geometry);
+  } else if(msg.type === 'result') {
+    if(msg.data && msg.data.geometry) buildBIM(msg.data.geometry);
+  } else if(msg.type === 'geometry' && msg.data) {
+    buildBIM(msg.data);
+  } else if(msg.type === 'bim_transform') {
+    GC.pending = {
+      theta: msg.theta,
+      phi:   msg.phi,
+      r:     msg.radius,
+      seq:   msg.seq
+    };
+  }
 }
 
-function updateHUD(geo){
-  const el = document.getElementById('hud-bim-info');
-  if(!el || !geo) return;
-  const nF = geo.floor_count || '?';
-  const W  = geo.wing_span   || '?';
-  const D  = geo.depth       || '?';
-  el.textContent = `${nF}F · ${W}×${D}m · ${((geo.confidence||0)*100).toFixed(0)}% conf`;
+function setWSDot(online) {
+  if(elWsDot)   elWsDot.className   = 'dot' + (online ? ' on' : '');
+  if(elWsLabel) elWsLabel.textContent = online ? 'WS ONLINE' : 'WS OFFLINE';
 }
 
-function showHUDBriefly(){
-  const hud = document.getElementById('hud');
-  if(!hud) return;
-  hud.classList.remove('hidden');
+// ── HUD flash ─────────────────────────────────────────────────────────────
+function flashHUD() {
+  if(!elHud) return;
+  elHud.classList.remove('hidden');
   if(hudTimer) clearTimeout(hudTimer);
-  hudTimer = setTimeout(()=>hud.classList.add('hidden'), 3500);
+  hudTimer = setTimeout(function(){ elHud.classList.add('hidden'); }, 3500);
 }
 
-// Tap anywhere to show HUD
-document.addEventListener('click', ()=>{
-  if(isGhostActive) showHUDBriefly();
+// ── Fullscreen ────────────────────────────────────────────────────────────
+function tryFullscreen() {
+  var el = document.documentElement;
+  var fn = el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen;
+  if(fn) fn.call(el);
+}
+function exitFullscreen() {
+  var fn = document.exitFullscreen || document.webkitExitFullscreen;
+  if(fn) fn.call(document);
+}
+
+// Resize
+window.addEventListener('resize', function() {
+  if(!isLive) return;
+  // Re-init renderer and cameras to new size
+  var W = window.innerWidth;
+  var H = window.innerHeight;
+  renderer.setSize(W, H, false);
+  elCanvas.width  = W;
+  elCanvas.height = H;
+  cameras = {};
+  initCameras();
 });
 
-// ════════════════════════════════════════════════════════
-// WINDOW RESIZE
-// ════════════════════════════════════════════════════════
-window.addEventListener('resize', ()=>{
-  if(!isGhostActive) return;
-  _exitGhost();
-});
-
-// Prevent context menu / accidental scroll
-document.addEventListener('contextmenu', e=>e.preventDefault());
-
-/* ═══════════════════════════════ ENGINE END ════════════════════════════════ */
-} // end initEngine()
 </script>
 </body>
 </html>
