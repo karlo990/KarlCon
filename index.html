@@ -206,9 +206,59 @@ html,body{
   </div>
 </div>
 
-<!-- Three.js r128 -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<!-- Three.js r128 — loaded async; buttons work before THREE is ready -->
 <script>
+// Guard: define stubs so onclick handlers never throw ReferenceError
+// even if Three.js hasn't loaded yet. Real impls assigned below after load.
+window._threeReady = false;
+window._pendingLaunch = null;
+
+function _requireThree(action){
+  if(window._threeReady){ action(); return; }
+  // Show user feedback while Three.js loads
+  const st = document.getElementById('ws-status-setup');
+  if(st){ st.className=''; st.textContent='● Loading 3D engine…'; }
+  window._pendingLaunch = action;
+}
+
+// Buttons call these — safe before THREE loads
+function testWS(){
+  const url = document.getElementById('ws-url').value.trim();
+  const st  = document.getElementById('ws-status-setup');
+  st.className=''; st.textContent='● CONNECTING…';
+  try {
+    const ws = new WebSocket(url);
+    ws.onopen  = ()=>{ st.className='ok'; st.textContent='● CONNECTED ✓'; ws.close(); };
+    ws.onerror = ()=>{ st.className='err'; st.textContent='● FAILED — check URL'; };
+    ws.onclose = ()=>{ if(st.textContent==='● CONNECTING…'){ st.className='err'; st.textContent='● CLOSED'; }};
+  } catch(e){ st.className='err'; st.textContent='● ERROR: '+e.message; }
+}
+function launchGhost(){ _requireThree(()=>_launchGhost()); }
+function launchDemo(){  _requireThree(()=>_launchDemo());  }
+function exitGhost(){   if(window._threeReady) _exitGhost(); }
+</script>
+<script async src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"
+  onload="window._onThreeLoaded()"
+  onerror="document.getElementById('ws-status-setup').textContent='● 3D engine failed to load — check internet'">
+</script>
+<script>
+window._onThreeLoaded = function(){
+  window._threeReady = true;
+  const st = document.getElementById('ws-status-setup');
+  if(st && st.textContent === '● Loading 3D engine…'){
+    st.textContent = '● NOT CONNECTED'; st.className = '';
+  }
+  // If user already clicked a button while THREE was loading, fire it now
+  if(window._pendingLaunch){ window._pendingLaunch(); window._pendingLaunch=null; }
+};
+// Main engine — all code that uses THREE lives here
+(function waitForThree(){
+  if(typeof THREE === 'undefined'){ setTimeout(waitForThree, 50); return; }
+  window._threeReady = true;
+  initEngine();
+})();
+function initEngine(){
+/* ═══════════════════════════════ ENGINE START ══════════════════════════════ */
 
 // ═══════════════════════════════════════════════════════
 // KARLCON PEPPER'S GHOST HOLOGRAM ENGINE
@@ -297,7 +347,7 @@ function testWS(){
   }
 }
 
-function launchGhost(){
+function _launchGhost(){
   const url = document.getElementById('ws-url').value.trim();
   demoMode = false;
   initGhost();
@@ -306,13 +356,11 @@ function launchGhost(){
   document.getElementById('ghost-wrap').style.display='block';
   isGhostActive = true;
   startRenderLoop();
-  // show HUD briefly then hide
   showHUDBriefly();
-  // Fullscreen
   requestFullscreen();
 }
 
-function launchDemo(){
+function _launchDemo(){
   demoMode = true;
   initGhost();
   document.getElementById('setup').style.display='none';
@@ -324,7 +372,7 @@ function launchDemo(){
   requestFullscreen();
 }
 
-function exitGhost(){
+function _exitGhost(){
   isGhostActive = false;
   if(animId){ cancelAnimationFrame(animId); animId=null; }
   if(WS){ WS.close(); WS=null; }
@@ -796,6 +844,11 @@ function _applySmoothCameraState(theta, phi, radius){
       radius * Math.cos(az) * Math.cos(phi)
     );
     cam.lookAt(0, 4.8, 0);
+  });
+}
+
+/**
+ * applyRemoteTransform — WS onmessage handler entry point.
  * Writes to GC.pending ONLY; no camera mutation here (Fix A1).
  * seq passed from relay-stamped message for RFC-3550 guard (Fix R2).
  */
@@ -846,13 +899,14 @@ document.addEventListener('click', ()=>{
 // ════════════════════════════════════════════════════════
 window.addEventListener('resize', ()=>{
   if(!isGhostActive) return;
-  // Re-init layout on resize (handles orientation change)
-  exitGhost();
+  _exitGhost();
 });
 
 // Prevent context menu / accidental scroll
 document.addEventListener('contextmenu', e=>e.preventDefault());
 
+/* ═══════════════════════════════ ENGINE END ════════════════════════════════ */
+} // end initEngine()
 </script>
 </body>
 </html>
