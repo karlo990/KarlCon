@@ -245,8 +245,8 @@ const VIEW_AZIMUTH = {
   left:  270,
 };
 
-const CAMERA_DIST = 40;
-const CAMERA_ELEV = 25; // elevation angle degrees
+const CAMERA_DIST = 35;
+const CAMERA_ELEV = 18; // elevation angle degrees — low angle matches 49.4° pyramid glass optics
 
 // ── STATE ────────────────────────────────────────────────
 let scenes       = {};
@@ -404,34 +404,37 @@ function initGhost(){
   // canvasRot: CSS rotation applied to the render canvas so ghost faces viewer
   // azimuth: camera orbit angle around Y
   // panelX/Y/W/H: position of div on screen
+  // World-unit frustum: BIM buildings are ~18m wide × ~10m tall.
+  // N/S panels: landscape (SW×half) — render SW×half, rotate 0°/180°
+  // E/W panels: CSS-rotated 90°/270° — render into MID×HALF (pre-rotated)
+  //   so after CSS rotation the on-screen image is HALF×MID (portrait strip)
+  //   with landscape proportions matching the building footprint.
+  const WORLD_HALF = 14;  // world units; building ~9m half-width → fits with margin
+
   const panelDefs = [
     {
       id:'north', azimuth:0,   canvasRot:180,
-      // top full-width strip; image rendered upright, rotated 180° → base toward centre
       x:0, y:0, w:SW, h:half,
-      cvW:SW, cvH:half,   // canvas pixel dims
-      frustW: SW / 2,     // ortho frustum half-width in world units (proportional)
+      cvW:SW, cvH:half,     // landscape canvas
+      frustW: WORLD_HALF,
     },
     {
       id:'west',  azimuth:270, canvasRot:90,
-      // left column of mid band
       x:0, y:half, w:half, h:mid,
-      cvW:half, cvH:mid,
-      frustW: half / 2,
+      cvW:mid, cvH:half,    // pre-rotated: mid×half → after 90° CSS → half×mid on screen
+      frustW: WORLD_HALF,
     },
     {
       id:'east',  azimuth:90,  canvasRot:270,
-      // right column of mid band
       x:half, y:half, w:half, h:mid,
-      cvW:half, cvH:mid,
-      frustW: half / 2,
+      cvW:mid, cvH:half,    // pre-rotated: mid×half → after 270° CSS → half×mid on screen
+      frustW: WORLD_HALF,
     },
     {
       id:'south', azimuth:180, canvasRot:0,
-      // bottom full-width strip; image rendered upright, no rotation → base toward centre
       x:0, y:half+mid, w:SW, h:half,
-      cvW:SW, cvH:half,
-      frustW: SW / 2,
+      cvW:SW, cvH:half,     // landscape canvas
+      frustW: WORLD_HALF,
     },
   ];
 
@@ -463,11 +466,14 @@ function initGhost(){
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x000000);
 
-    // Ortho frustum: scale world units to canvas aspect
+    // Ortho frustum: world-unit half-widths so building fills each panel.
+    // fW = half-width along panel's horizontal axis in world units.
+    // fH = fW / aspect so the frustum matches the canvas shape exactly.
+    // WORLD_HALF=18 → building ±9m fits with comfortable margin in all panels.
     const aspect = pd.cvW / pd.cvH;
-    const fW = pd.frustW;
-    const fH = fW / aspect;
-    const cam = new THREE.OrthographicCamera(-fW, fW, fH, -fH, 0.1, 200);
+    const fW = pd.frustW;           // world half-width (horizontal)
+    const fH = fW / aspect;         // world half-height (vertical) — correct for ortho
+    const cam = new THREE.OrthographicCamera(-fW, fW, fH, -fH, 0.1, 500);
 
     const az = pd.azimuth * Math.PI / 180;
     const el = CAMERA_ELEV * Math.PI / 180;
@@ -476,7 +482,7 @@ function initGhost(){
       CAMERA_DIST * Math.sin(el),
       CAMERA_DIST * Math.cos(az) * Math.cos(el)
     );
-    cam.lookAt(0, 5, 0);
+    cam.lookAt(0, 4.8, 0);  // aim at building mid-height (default 3F × 3.2m / 2)
 
     const renderer = new THREE.WebGLRenderer({ canvas: cvs, antialias: true, alpha: false });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -789,12 +795,7 @@ function _applySmoothCameraState(theta, phi, radius){
       radius * Math.sin(phi),
       radius * Math.cos(az) * Math.cos(phi)
     );
-    cam.lookAt(0, 5, 0);
-  });
-}
-
-/**
- * applyRemoteTransform — WS onmessage handler entry point.
+    cam.lookAt(0, 4.8, 0);
  * Writes to GC.pending ONLY; no camera mutation here (Fix A1).
  * seq passed from relay-stamped message for RFC-3550 guard (Fix R2).
  */
