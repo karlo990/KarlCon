@@ -405,9 +405,11 @@ function initGhost(){
     display:block;
   `;
 
-  // Center mask — proportional to sq (≈9.97mm apex at A06 scale)
+  // Center mask — proportional to sq (blueprint apex = 9.97mm)
+  // A06 6.52in: 269PPI → 0.0944mm/px → 9.97/0.0944 = 105.6px logical
+  // ratio = 105.6 / sq(360) = 0.293. Scales correctly to any portrait screen.
   const mask  = document.getElementById('center-mask');
-  const mSize = Math.round(sq * 0.293); // apex=9.97mm @ 269PPI → 105.6px; ratio=105.6/360=0.293
+  const mSize = Math.round(sq * 0.293);
   mask.style.cssText = `
     position:absolute;
     width:${mSize}px;height:${mSize}px;
@@ -477,8 +479,25 @@ function initGhost(){
     cam.lookAt(0, 4.8, 0); // building centre: 3×3.2m/2=4.8m
 
     const renderer = new THREE.WebGLRenderer({ canvas: cvs, antialias: true, alpha: false });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(1); // A06 Mali-G52: DPR=2 × 4 panels = 2M px/frame → GPU overload → glitch/crash
     renderer.setSize(sq, sq);
+
+    // WebGL context loss recovery — A06 Mali-G52 throttles/kills WebGL contexts
+    // after sustained rendering or when browser backgrounded. Without this the
+    // canvas goes black and never recovers without a full page reload.
+    cvs.addEventListener('webglcontextlost', (e)=>{
+      e.preventDefault(); // required to allow restore
+    }, false);
+    cvs.addEventListener('webglcontextrestored', ()=>{
+      // Renderer auto-restores; force a re-layout to rebuild geometry
+      if(isGhostActive){
+        PANEL_IDS.forEach(id=>{ if(renderers[id]) renderers[id].dispose(); });
+        document.getElementById('quad-grid').innerHTML = '';
+        scenes={}; renderers={}; cameras={};
+        initGhost();
+        if(bimParams) buildBIM(bimParams);
+      }
+    }, false);
 
     const ambient  = new THREE.AmbientLight(0x002233, 2.0);
     scene.add(ambient);
@@ -858,12 +877,32 @@ document.addEventListener('click', ()=>{
 });
 
 // ════════════════════════════════════════════════════════
-// WINDOW RESIZE
+// WINDOW RESIZE — debounced re-layout (never kill ghost)
 // ════════════════════════════════════════════════════════
+// BUGFIX: old code called exitGhost() on ANY resize — on Samsung A06 the
+// browser address bar hide/show and virtual keyboard trigger resize events,
+// immediately destroying the hologram display.
+// Fix: debounce 400ms, only re-layout renderers, never exit ghost mode.
+let _resizeTimer = null;
 window.addEventListener('resize', ()=>{
   if(!isGhostActive) return;
-  // Re-init layout on resize (handles orientation change)
-  exitGhost();
+  if(_resizeTimer) clearTimeout(_resizeTimer);
+  _resizeTimer = setTimeout(()=>{
+    _resizeTimer = null;
+    // Only re-init if size actually changed meaningfully (>10px)
+    const wrap = document.getElementById('ghost-wrap');
+    const newW = wrap.clientWidth  || window.innerWidth;
+    const newH = wrap.clientHeight || window.innerHeight;
+    const old  = window._karlLayout || {};
+    if(Math.abs(newW - (old.SW||0)) > 10 || Math.abs(newH - (old.SH||0)) > 10){
+      // Dispose old renderers cleanly then re-init layout
+      PANEL_IDS.forEach(id=>{ if(renderers[id]) renderers[id].dispose(); });
+      document.getElementById('quad-grid').innerHTML = '';
+      scenes={}; renderers={}; cameras={};
+      initGhost();
+      if(bimParams) buildBIM(bimParams);
+    }
+  }, 400);
 });
 
 // Prevent context menu / accidental scroll
